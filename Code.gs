@@ -66,7 +66,9 @@ function doPost(e) {
       addTaskLink: addTaskLink,
       createOnlineDoc: createOnlineDoc,
       deleteTaskLink: deleteTaskLink,
-      logDocAccess: logDocAccess
+      logDocAccess: logDocAccess,
+      addTaskComment: addTaskComment,
+      deleteTaskComment: deleteTaskComment
     };
     if (!handlers[action]) return jsonResponse({ ok: false, error: 'Acción no reconocida: ' + action });
     var result = handlers[action](body);
@@ -336,7 +338,7 @@ function createProject(body) {
   shUsuarios.getRange(1, 1, 1, 4).setValues([['Nombre', 'Rol', 'PasswordHash', 'Email']]);
 
   var shTareas = ss.insertSheet(TABS.TAREAS);
-  shTareas.getRange(1, 1, 1, 13).setValues([['ID', 'ParentID', 'Titulo', 'Responsable', 'Estado', 'Vencimiento', 'Prioridad', 'Notas', 'CronogramaInicio', 'CronogramaFin', 'SprintID', 'Actualizado', 'EnlacesDocumento']]);
+  shTareas.getRange(1, 1, 1, 14).setValues([['ID', 'ParentID', 'Titulo', 'Responsable', 'Estado', 'Vencimiento', 'Prioridad', 'Notas', 'CronogramaInicio', 'CronogramaFin', 'SprintID', 'Actualizado', 'EnlacesDocumento', 'Comentarios']]);
 
   // Plantilla opcional: si el creador eligió cargar una estructura de tareas
   // ya definida (ej. "PROYECTO DE CAPACITACIONES"), se escribe todo de una vez.
@@ -420,6 +422,9 @@ function getProjectData(projectId) {
       notas: t.Notas || '', cronogramaInicio: fmtDateOnly_(t.CronogramaInicio), cronogramaFin: fmtDateOnly_(t.CronogramaFin),
       sprintId: t.SprintID || null, actualizado: fmtDateTime_(t.Actualizado), expandido: false,
       enlaces: leerEnlaces_(t),
+      // Compatibilidad: si la tarea tenía una nota de texto simple (versión
+      // anterior) y todavía no tiene comentarios, se muestra como el primero.
+      comentarios: (function () { var c = leerComentarios_(t); return c.length ? c : (t.Notas ? [{ id: 'legacy', texto: String(t.Notas), usuario: '', fecha: '' }] : []); })(),
       archivos: archivosPorTarea[t.ID] || [], hijos: []
     };
   });
@@ -501,6 +506,55 @@ function updateTask(body) {
   row.Actualizado = fmtDateTime_(new Date());
   var okUpd = updateRowById_(ss, TABS.TAREAS, 'ID', body.taskId, row);
   return { ok: okUpd };
+}
+
+// ============================================================
+// COMENTARIOS DE TAREA (registro/control tipo bitácora, no una
+// nota única: se guardan como un array JSON en una sola columna,
+// igual que EnlacesDocumento).
+// ============================================================
+function leerComentarios_(tareaRow) {
+  try { return tareaRow.Comentarios ? JSON.parse(tareaRow.Comentarios) : []; }
+  catch (e) { return []; }
+}
+function guardarComentarios_(ss, taskId, comentarios) {
+  ensureColumn_(ss.getSheetByName(TABS.TAREAS), 'Comentarios');
+  updateRowById_(ss, TABS.TAREAS, 'ID', taskId, { Comentarios: JSON.stringify(comentarios) });
+}
+
+function addTaskComment(body) {
+  var ss = openControlSheet_(body.projectId);
+  var t = encontrarTarea_(ss, body.taskId);
+  if (!t) return { ok: false, error: 'Tarea no encontrada.' };
+  var texto = (body.texto || '').trim();
+  if (!texto) return { ok: false, error: 'El comentario no puede estar vacío.' };
+  var comentarios = leerComentarios_(t);
+  // Migra la nota de texto simple de la versión anterior (columna Notas) a
+  // la bitácora, la primera vez que se agrega un comentario nuevo, para no perderla.
+  if (!comentarios.length && t.Notas) comentarios.push({ id: Utilities.getUuid(), texto: String(t.Notas), usuario: '', fecha: '' });
+  var nuevo = { id: Utilities.getUuid(), texto: texto, usuario: body.usuario || '', fecha: fmtDateTime_(new Date()) };
+  comentarios.push(nuevo);
+  guardarComentarios_(ss, body.taskId, comentarios);
+  updateRowById_(ss, TABS.TAREAS, 'ID', body.taskId, { Actualizado: fmtDateTime_(new Date()) });
+  return { ok: true, comentario: nuevo };
+}
+
+// Solo el admin o quien escribió el comentario puede borrarlo.
+function deleteTaskComment(body) {
+  var ss = openControlSheet_(body.projectId);
+  var t = encontrarTarea_(ss, body.taskId);
+  if (!t) return { ok: false, error: 'Tarea no encontrada.' };
+  var comentarios = leerComentarios_(t);
+  var propio = comentarios.filter(function (c) { return c.id === body.commentId; })[0];
+  if (!propio) return { ok: false, error: 'Comentario no encontrado.' };
+  if (propio.usuario !== body.usuario) {
+    var usuarios = readTable_(ss, TABS.USUARIOS);
+    var u = usuarios.filter(function (x) { return String(x.Nombre).toLowerCase() === String(body.usuario || '').toLowerCase(); })[0];
+    if (!u || u.Rol !== 'admin') return { ok: false, error: 'Solo el autor o el Admin pueden borrar este comentario.' };
+  }
+  comentarios = comentarios.filter(function (c) { return c.id !== body.commentId; });
+  guardarComentarios_(ss, body.taskId, comentarios);
+  return { ok: true };
 }
 
 // Importa una plantilla de tareas (árbol) a un proyecto YA EXISTENTE,

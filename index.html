@@ -146,6 +146,18 @@ dialog input,dialog textarea,dialog select{width:100%;background:var(--bg3);bord
 dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
 dialog .err{color:var(--red);font-size:.8rem;min-height:1em;margin-top:8px}
 .count-pill{background:var(--bg);border-radius:10px;padding:1px 8px;font-size:.72rem;color:var(--txt-dim);margin-left:6px}
+.notes-list{max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin:10px 0;padding-right:2px}
+.notes-list .empty-hint{padding:20px;font-size:.82rem}
+.note-item{background:var(--bg3);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.note-meta{display:flex;align-items:center;gap:8px;font-size:.72rem;color:var(--txt-dim);margin-bottom:4px}
+.note-author{font-weight:700;color:var(--accent)}
+.note-del{margin-left:auto;background:none;border:none;color:var(--red);cursor:pointer;font-size:.72rem;padding:0}
+.note-text{font-size:.85rem;white-space:pre-wrap;overflow-wrap:break-word}
+.notes-add{display:flex;gap:8px;align-items:flex-end}
+.notes-add textarea{resize:vertical;flex:1}
+.notes-add .btn{flex-shrink:0}
+.notes-cell{cursor:pointer}
+.notes-count{display:inline-block;background:var(--accent);color:#0e1330;border-radius:9px;min-width:16px;text-align:center;font-size:.68rem;font-weight:700;padding:0 4px}
 
 /* Participantes builder (dentro del diálogo de nuevo proyecto) */
 .part-row{display:grid;grid-template-columns:1fr 110px 30px;gap:6px;margin-bottom:6px;align-items:center}
@@ -389,11 +401,15 @@ dialog .err{color:var(--red);font-size:.8rem;min-height:1em;margin-top:8px}
 </dialog>
 
 <dialog id="dlgNotes">
-  <h3>Notas</h3>
-  <textarea id="dlgNotesText" rows="6"></textarea>
+  <h3>Notas / Bitácora de la tarea</h3>
+  <p class="hint">Registra correcciones, pendientes o novedades de esta tarea. Cada nota queda con fecha y autor, para llevar el control de lo que se ha hecho.</p>
+  <div id="dlgNotesList" class="notes-list"></div>
+  <div class="notes-add">
+    <textarea id="dlgNotesText" rows="2" placeholder="Escribe una nota o comentario..."></textarea>
+    <button class="btn" id="dlgNotesSave">Agregar</button>
+  </div>
   <div class="actions">
-    <button class="btn ghost" data-close>Cancelar</button>
-    <button class="btn" id="dlgNotesSave">Guardar</button>
+    <button class="btn ghost" data-close>Cerrar</button>
   </div>
 </dialog>
 
@@ -993,7 +1009,8 @@ function renderTaskRow(t, depth){
     <td><select class="tag-select prio-${t.prioridad}" data-field="prioridad" data-id="${t.id}">
       ${PRIORIDADES.map(p=>`<option ${p===t.prioridad?'selected':''}>${p}</option>`).join('')}</select></td>
     <td><div class="files-cell">${filesHtml}<button class="add-file" data-add-file="${t.id}" ${puedeSubir?'':'disabled'} title="${puedeSubir?'Subir archivo':'Solo '+(t.responsable||'el responsable asignado')+' puede subir aquí'}">+</button></div></td>
-    <td><span class="task-title" data-open-notes="${t.id}" title="${escapeHtml(t.notas)}">${t.notas ? escapeHtml(t.notas.slice(0,20))+(t.notas.length>20?'…':'') : '+ Notas'}</span></td>
+    <td>${(()=>{ const c=t.comentarios||[]; const ult=c[c.length-1]; const preview = ult ? escapeHtml(ult.texto.slice(0,18))+(ult.texto.length>18?'…':'') : '+ Notas';
+      return `<span class="task-title notes-cell" data-open-notes="${t.id}" title="${ult?escapeHtml(ult.texto):'Agregar una nota'}">${c.length?`<span class="notes-count">${c.length}</span> `:''}${preview}</span>`; })()}</td>
     <td><div class="cronograma-cell">
       <div class="date-cell"><input type="date" value="${t.cronogramaInicio}" data-field="cronogramaInicio" data-id="${t.id}">${t.cronogramaInicio?`<button class="date-clear" data-clear-date="cronogramaInicio:${t.id}" title="Dejar en blanco (sin fecha)">✕</button>`:''}</div>
       <div class="date-cell"><input type="date" value="${t.cronogramaFin}" data-field="cronogramaFin" data-id="${t.id}">${t.cronogramaFin?`<button class="date-clear" data-clear-date="cronogramaFin:${t.id}" title="Dejar en blanco (sin fecha)">✕</button>`:''}</div>
@@ -1125,13 +1142,55 @@ document.getElementById('dlgTaskSave').onclick = async ()=>{
 document.getElementById('btnAddTask').onclick = ()=> openTaskDialog(null);
 
 let notesTaskId = null;
-function openNotesDialog(id){ notesTaskId=id; document.getElementById('dlgNotesText').value = findTarea(projectData.tareas,id).notas||''; document.getElementById('dlgNotes').showModal(); }
-document.getElementById('dlgNotesSave').onclick = async ()=>{
+function renderNotesList(){
   const t = findTarea(projectData.tareas, notesTaskId);
-  t.notas = document.getElementById('dlgNotesText').value; t.actualizado = nowStamp();
-  renderProjectScreen();
-  document.getElementById('dlgNotes').close();
-  await apiPost('updateTask', { projectId: activeProjectId, taskId: t.id, patch: { notas: t.notas } });
+  const comentarios = t.comentarios || [];
+  const list = document.getElementById('dlgNotesList');
+  if(!comentarios.length){ list.innerHTML = '<div class="empty-hint">Todavía no hay notas en esta tarea.</div>'; return; }
+  list.innerHTML = comentarios.map(c=>`
+    <div class="note-item">
+      <div class="note-meta">
+        <span class="note-author">${escapeHtml(c.usuario||'—')}</span>
+        <span class="note-date">${escapeHtml(c.fecha||'')}</span>
+        ${(isAdmin()||c.usuario===session.usuario)&&c.id!=='legacy' ? `<button class="note-del" data-del-note="${c.id}" title="Eliminar nota">✕</button>` : ''}
+      </div>
+      <div class="note-text">${escapeHtml(c.texto)}</div>
+    </div>`).join('');
+  list.scrollTop = list.scrollHeight;
+}
+function openNotesDialog(id){
+  notesTaskId=id;
+  document.getElementById('dlgNotesText').value = '';
+  renderNotesList();
+  document.getElementById('dlgNotes').showModal();
+}
+document.getElementById('dlgNotesList').addEventListener('click', async (e)=>{
+  const del = e.target.closest('[data-del-note]');
+  if(!del) return;
+  if(!confirm('¿Eliminar esta nota?')) return;
+  const t = findTarea(projectData.tareas, notesTaskId);
+  const r = await apiPost('deleteTaskComment', { projectId: activeProjectId, taskId: t.id, commentId: del.dataset.delNote, usuario: session.usuario });
+  if(!r.ok){ alert('Error: ' + r.error); return; }
+  t.comentarios = (t.comentarios||[]).filter(c=>c.id!==del.dataset.delNote);
+  renderNotesList();
+  renderTable();
+});
+document.getElementById('dlgNotesText').addEventListener('keydown', (e)=>{
+  if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); document.getElementById('dlgNotesSave').click(); }
+});
+document.getElementById('dlgNotesSave').onclick = async ()=>{
+  const texto = document.getElementById('dlgNotesText').value.trim();
+  if(!texto) return;
+  const t = findTarea(projectData.tareas, notesTaskId);
+  const r = await apiPost('addTaskComment', { projectId: activeProjectId, taskId: t.id, texto, usuario: session.usuario });
+  if(!r.ok){ alert('Error: ' + r.error); return; }
+  // El backend migra la nota antigua de texto simple (si había) a la bitácora
+  // en este mismo momento; localmente basta con agregar el comentario nuevo.
+  t.comentarios = (t.comentarios||[]).concat([r.comentario]);
+  t.actualizado = nowStamp();
+  document.getElementById('dlgNotesText').value = '';
+  renderNotesList();
+  renderTable();
 };
 
 let linksTaskId = null;
@@ -1275,7 +1334,7 @@ function reportRows(){
     ruta: (parents.length? parents.join(' / ')+' / ' : '') + t.titulo,
     responsable: t.responsable||'', estado: t.estado, vencimiento: t.vencimiento||'',
     prioridad: t.prioridad, cronogramaInicio: t.cronogramaInicio||'', cronogramaFin: t.cronogramaFin||'',
-    notas: t.notas||'', actualizado: t.actualizado
+    notas: (t.comentarios||[]).map(c=>c.texto).join(' | '), actualizado: t.actualizado
   }));
 }
 function renderReportes(){
