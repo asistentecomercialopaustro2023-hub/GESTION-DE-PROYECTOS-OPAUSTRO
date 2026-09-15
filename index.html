@@ -115,7 +115,8 @@ select.tag-select{border:none;border-radius:4px;padding:5px 8px;font-weight:700;
 .prio-Alta{background:#ff5ac4}
 input[type=date]{background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:4px;padding:4px 6px;font-size:.78rem}
 .resp-input{background:transparent;border:none;color:var(--txt);width:100%}
-select.resp-input{cursor:pointer}
+select.resp-input{cursor:pointer;font-weight:600}
+select.resp-input.is-placeholder{color:#9aa4b2;font-weight:400;font-style:italic}
 .resp-input:focus{background:var(--bg3)}
 .files-cell{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .file-chip{background:var(--bg3);border:1px solid var(--line);border-radius:12px;padding:2px 8px;font-size:.72rem;display:flex;align-items:center;gap:4px}
@@ -950,7 +951,7 @@ function renderTaskRow(t, depth){
     if(isAdmin()) manageBtnHtml = `<button class="btn ghost small" data-manage-links="${t.id}" title="Agregar o quitar enlaces/documentos">🔗+</button>`;
   }
   const usuarios = (projectData.usuarios||[]);
-  const respOptions = ['<option value="">—</option>']
+  const respOptions = ['<option value="" disabled '+(t.responsable?'':'selected')+'>Seleccione el responsable</option>']
     .concat(usuarios.map(u=>`<option ${u.nombre===t.responsable?'selected':''}>${escapeHtml(u.nombre)}</option>`))
     .concat((t.responsable && !usuarios.some(u=>u.nombre===t.responsable)) ? [`<option selected>${escapeHtml(t.responsable)}</option>`] : [])
     .join('');
@@ -961,7 +962,7 @@ function renderTaskRow(t, depth){
       ${manageBtnHtml}
       ${docIconsHtml ? `<div class="doc-icons-row">${docIconsHtml}</div>` : ''}
     </div></td>
-    <td><select class="resp-input" data-field="responsable" data-id="${t.id}">${respOptions}</select></td>
+    <td><select class="resp-input${t.responsable?'':' is-placeholder'}" data-field="responsable" data-id="${t.id}">${respOptions}</select></td>
     <td><select class="tag-select estado-${t.estado.replace(/ /g,'-')}" data-field="estado" data-id="${t.id}">
       ${ESTADOS.map(e=>`<option ${e===t.estado?'selected':''}>${e}</option>`).join('')}</select></td>
     <td><input type="date" value="${t.vencimiento}" data-field="vencimiento" data-id="${t.id}"></td>
