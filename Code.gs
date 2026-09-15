@@ -582,8 +582,13 @@ function importTareas(body) {
 // Solo el admin del proyecto puede agregar, crear o eliminar. Los
 // participantes solo pueden abrirlos (eso lo controla el frontend).
 // ============================================================
-function getDocsFolder_(projectFolder) {
-  return getOrCreateSubfolder_(projectFolder, 'Documentos en línea');
+// Igual que los archivos subidos, los documentos en línea creados desde la
+// app se organizan dentro de la carpeta del módulo (tarea principal) al que
+// pertenecen: <Proyecto>/<Módulo>/Documentos en línea/.
+function getDocsFolder_(projectFolder, tareasFlat, taskId) {
+  var modulo = encontrarModulo_(tareasFlat, taskId);
+  var moduloFolder = getOrCreateSubfolder_(projectFolder, (modulo && modulo.Titulo) ? modulo.Titulo : 'General');
+  return getOrCreateSubfolder_(moduloFolder, 'Documentos en línea');
 }
 function leerEnlaces_(tareaRow) {
   try { return tareaRow.EnlacesDocumento ? JSON.parse(tareaRow.EnlacesDocumento) : []; }
@@ -623,7 +628,8 @@ function createOnlineDoc(body) {
   var ss = openControlSheet_(body.projectId);
   var err = requireAdmin_(ss, body.adminUsuario, body.adminPassword);
   if (err) return { ok: false, error: err };
-  var row = encontrarTarea_(ss, body.taskId);
+  var tareasFlat = readTable_(ss, TABS.TAREAS);
+  var row = tareasFlat.filter(function (t) { return String(t.ID) === String(body.taskId); })[0];
   if (!row) return { ok: false, error: 'Tarea no encontrada.' };
   var titulo = (body.titulo || '').trim();
   if (!titulo) return { ok: false, error: 'El nombre del documento es obligatorio.' };
@@ -634,7 +640,9 @@ function createOnlineDoc(body) {
   else if (body.tipo === 'slide') { var p = SlidesApp.create(titulo); file = DriveApp.getFileById(p.getId()); url = p.getUrl(); }
   else return { ok: false, error: 'Tipo de documento no válido.' };
 
-  var docsFolder = getDocsFolder_(getProjectFolder_(body.projectId));
+  // Se organiza igual que los archivos subidos: dentro de la carpeta del
+  // módulo (tarea principal) al que pertenece esta tarea/subtarea.
+  var docsFolder = getDocsFolder_(getProjectFolder_(body.projectId), tareasFlat, body.taskId);
   file.moveTo(docsFolder);
 
   // Se comparte la carpeta "Documentos en línea" completa (no archivo por
