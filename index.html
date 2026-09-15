@@ -82,10 +82,10 @@ table.board{width:100%;table-layout:fixed;border-collapse:collapse;background:va
 table.board th{background:var(--bg3);color:var(--txt-dim);text-align:left;padding:8px 6px;font-size:.7rem;text-transform:uppercase;letter-spacing:.02em;white-space:normal;overflow-wrap:break-word}
 table.board td{padding:6px;border-bottom:1px solid var(--line);vertical-align:middle;font-size:.78rem;overflow-wrap:break-word;word-break:break-word}
 /* Ancho por columna para que la tabla nunca necesite scroll horizontal */
-table.board th:nth-child(1){width:26%}
+table.board th:nth-child(1){width:29%}
 table.board th:nth-child(2){width:9%}
 table.board th:nth-child(3){width:9%}
-table.board th:nth-child(4){width:15%}
+table.board th:nth-child(4){width:12%}
 table.board th:nth-child(5){width:8%}
 table.board th:nth-child(6){width:6%}
 table.board th:nth-child(7){width:6%}
@@ -127,9 +127,11 @@ select.resp-input.is-placeholder{color:#9aa4b2;font-weight:400;font-style:italic
 .add-file[disabled]{opacity:.35;cursor:not-allowed}
 .depth-indent{display:inline-block}
 .cronograma-cell{display:flex;flex-direction:column;gap:4px}
-.date-cell{display:flex;gap:4px;align-items:center;width:100%}
-.date-cell input[type=date]{width:100%;min-width:0;flex:1}
-.date-clear{flex-shrink:0;width:20px;height:20px;line-height:1;border:none;border-radius:50%;background:var(--bg3);color:var(--txt-dim);cursor:pointer;font-size:.7rem}
+.date-cell{display:flex;gap:3px;align-items:center;width:100%}
+.date-cell input[type=date]{width:100%;min-width:0;flex:1;padding-right:4px}
+.date-cell input[type=date]::-webkit-calendar-picker-indicator{display:none;-webkit-appearance:none}
+.date-pick,.date-clear{flex-shrink:0;width:19px;height:19px;line-height:1;border:none;border-radius:50%;background:var(--bg3);color:var(--txt-dim);cursor:pointer;font-size:.68rem;padding:0;display:flex;align-items:center;justify-content:center}
+.date-pick:hover{color:var(--accent);background:var(--bg2)}
 .date-clear:hover{color:var(--red);background:var(--bg2)}
 .kanban-cols{display:flex;flex-wrap:wrap;gap:14px}
 .kcol{background:var(--bg2);border-radius:8px;min-width:200px;flex:1 1 200px;padding:10px}
@@ -979,6 +981,17 @@ function renderTable(){
   });
 }
 
+// Campo de fecha compacto: se oculta el ícono de calendario nativo del
+// input (que ocupa espacio dentro del propio recuadro) y se agrega uno
+// propio, más chico, seguido del botón "x" para dejarla en blanco — así el
+// conjunto completo queda más corto en vez del input nativo + calendario + x.
+function dateCellHtml(value, campo, taskId){
+  return `<div class="date-cell">
+    <input type="date" value="${value}" data-field="${campo}" data-id="${taskId}">
+    <button type="button" class="date-pick" data-pick-date="${campo}:${taskId}" title="Elegir fecha">📅</button>
+    ${value?`<button class="date-clear" data-clear-date="${campo}:${taskId}" title="Dejar en blanco (sin fecha)">✕</button>`:''}
+  </div>`;
+}
 function renderTaskRow(t, depth){
   const tr = document.createElement('tr');
   tr.className = 'task-row'; tr.draggable = true; tr.dataset.id = t.id;
@@ -1010,15 +1023,15 @@ function renderTaskRow(t, depth){
     <td><select class="resp-input${t.responsable?'':' is-placeholder'}" data-field="responsable" data-id="${t.id}" ${isAdmin()?'':'disabled title="Solo el Admin puede asignar el responsable"'}>${respOptions}</select></td>
     <td><select class="tag-select estado-${t.estado.replace(/ /g,'-')}" data-field="estado" data-id="${t.id}">
       ${ESTADOS.map(e=>`<option ${e===t.estado?'selected':''}>${e}</option>`).join('')}</select></td>
-    <td><div class="date-cell"><input type="date" value="${t.vencimiento}" data-field="vencimiento" data-id="${t.id}">${t.vencimiento?`<button class="date-clear" data-clear-date="vencimiento:${t.id}" title="Dejar en blanco (sin fecha)">✕</button>`:''}</div></td>
+    <td>${dateCellHtml(t.vencimiento, 'vencimiento', t.id)}</td>
     <td><select class="tag-select prio-${t.prioridad}" data-field="prioridad" data-id="${t.id}">
       ${PRIORIDADES.map(p=>`<option ${p===t.prioridad?'selected':''}>${p}</option>`).join('')}</select></td>
     <td><div class="files-cell">${filesHtml}<button class="add-file" data-add-file="${t.id}" ${puedeSubir?'':'disabled'} title="${puedeSubir?'Subir archivo':'Solo '+(t.responsable||'el responsable asignado')+' puede subir aquí'}">+</button></div></td>
     <td>${(()=>{ const c=t.comentarios||[]; const ult=c[c.length-1]; const preview = ult ? escapeHtml(ult.texto.slice(0,18))+(ult.texto.length>18?'…':'') : '+ Notas';
       return `<span class="task-title notes-cell" data-open-notes="${t.id}" title="${ult?escapeHtml(ult.texto):'Agregar una nota'}">${c.length?`<span class="notes-count">${c.length}</span> `:''}${preview}</span>`; })()}</td>
     <td><div class="cronograma-cell">
-      <div class="date-cell"><input type="date" value="${t.cronogramaInicio}" data-field="cronogramaInicio" data-id="${t.id}">${t.cronogramaInicio?`<button class="date-clear" data-clear-date="cronogramaInicio:${t.id}" title="Dejar en blanco (sin fecha)">✕</button>`:''}</div>
-      <div class="date-cell"><input type="date" value="${t.cronogramaFin}" data-field="cronogramaFin" data-id="${t.id}">${t.cronogramaFin?`<button class="date-clear" data-clear-date="cronogramaFin:${t.id}" title="Dejar en blanco (sin fecha)">✕</button>`:''}</div>
+      ${dateCellHtml(t.cronogramaInicio, 'cronogramaInicio', t.id)}
+      ${dateCellHtml(t.cronogramaFin, 'cronogramaFin', t.id)}
     </div></td>
     <td style="color:var(--txt-dim);font-size:.76rem">${escapeHtml(t.actualizado||'').replace(' ','<br>')}<br><button class="btn ghost small" data-del="${t.id}" style="margin-top:4px;color:var(--red);border-color:var(--red)">Eliminar</button></td>
   `;
@@ -1055,6 +1068,12 @@ document.getElementById('tableBody').addEventListener('click', async (e)=>{
   if(notes){ openNotesDialog(notes.dataset.openNotes); return; }
   const manageLinks = e.target.closest('[data-manage-links]');
   if(manageLinks){ openLinksDialog(manageLinks.dataset.manageLinks); return; }
+  const pickDate = e.target.closest('[data-pick-date]');
+  if(pickDate){
+    const input = pickDate.previousElementSibling;
+    try{ input.showPicker(); } catch(err){ input.focus(); }
+    return;
+  }
   const clearDate = e.target.closest('[data-clear-date]');
   if(clearDate){
     const [campo, tid] = clearDate.dataset.clearDate.split(':');
