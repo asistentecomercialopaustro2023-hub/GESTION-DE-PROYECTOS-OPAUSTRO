@@ -447,15 +447,20 @@ function getProjectData(projectId) {
   // en orden entre ellas — sin tocar el Sheet, solo al armar la respuesta.
   // El resto de subtareas conserva su orden de siempre. Los módulos (tareas
   // de nivel superior) no se reordenan, solo sus subtareas.
-  var esRevision_ = function (titulo) { return /^revisi[oó]n/i.test(String(titulo || '').trim()); };
-  var moverRevisionesAlFinal_ = function (hijos) {
-    hijos.forEach(function (n) { if (n.hijos.length) moverRevisionesAlFinal_(n.hijos); });
-    var normales = hijos.filter(function (n) { return !esRevision_(n.titulo); });
-    var revisiones = hijos.filter(function (n) { return esRevision_(n.titulo); });
-    hijos.length = 0;
-    Array.prototype.push.apply(hijos, normales.concat(revisiones));
-  };
-  roots.forEach(function (modulo) { moverRevisionesAlFinal_(modulo.hijos); });
+  // IMPORTANTE: esto es una regla puntual SOLO para este proyecto
+  // ("PROYECTO DE CAPACITACIONES"); los demás proyectos que se creen
+  // mantienen el orden natural en que se van agregando sus tareas.
+  if (String(config.Nombre || '').trim().toLowerCase() === 'proyecto de capacitaciones') {
+    var esRevision_ = function (titulo) { return /^revisi[oó]n/i.test(String(titulo || '').trim()); };
+    var moverRevisionesAlFinal_ = function (hijos) {
+      hijos.forEach(function (n) { if (n.hijos.length) moverRevisionesAlFinal_(n.hijos); });
+      var normales = hijos.filter(function (n) { return !esRevision_(n.titulo); });
+      var revisiones = hijos.filter(function (n) { return esRevision_(n.titulo); });
+      hijos.length = 0;
+      Array.prototype.push.apply(hijos, normales.concat(revisiones));
+    };
+    roots.forEach(function (modulo) { moverRevisionesAlFinal_(modulo.hijos); });
+  }
 
   var result = {
     ok: true,
