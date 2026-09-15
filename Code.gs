@@ -443,6 +443,20 @@ function getProjectData(projectId) {
     else roots.push(node);
   });
 
+  // Las subtareas "Revisión..." siempre se muestran al final de cada módulo,
+  // en orden entre ellas — sin tocar el Sheet, solo al armar la respuesta.
+  // El resto de subtareas conserva su orden de siempre. Los módulos (tareas
+  // de nivel superior) no se reordenan, solo sus subtareas.
+  var esRevision_ = function (titulo) { return /^revisi[oó]n/i.test(String(titulo || '').trim()); };
+  var moverRevisionesAlFinal_ = function (hijos) {
+    hijos.forEach(function (n) { if (n.hijos.length) moverRevisionesAlFinal_(n.hijos); });
+    var normales = hijos.filter(function (n) { return !esRevision_(n.titulo); });
+    var revisiones = hijos.filter(function (n) { return esRevision_(n.titulo); });
+    hijos.length = 0;
+    Array.prototype.push.apply(hijos, normales.concat(revisiones));
+  };
+  roots.forEach(function (modulo) { moverRevisionesAlFinal_(modulo.hijos); });
+
   var result = {
     ok: true,
     proyecto: { id: projectId, nombre: config.Nombre || '', objetivo: config.Objetivo || '', resultados: config.Resultados || '', creado: config.Creado || '' },
