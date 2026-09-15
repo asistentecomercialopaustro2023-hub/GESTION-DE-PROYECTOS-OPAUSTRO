@@ -19,6 +19,14 @@
 
 var ROOT_FOLDER_ID = '1-xGBh-Dbt4goaKYj5J9Tg3Yr4iVSpI6J';
 
+// Todas las fechas/horas de la app usan siempre horario de Ecuador
+// (America/Guayaquil, sin horario de verano), sin importar la zona horaria
+// configurada en el proyecto de Apps Script o en la hoja de cálculo.
+var TZ = 'America/Guayaquil';
+function hoyEcuador_() { return Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'); }
+function ahoraEcuadorStamp_() { return Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm'); }
+function ahoraEcuadorISO_() { return Utilities.formatDate(new Date(), TZ, "yyyy-MM-dd'T'HH:mm:ss"); }
+
 var TABS = {
   CONFIG: 'Config',
   USUARIOS: 'Usuarios',
@@ -230,7 +238,7 @@ function deleteRowsWhere_(ss, tabName, idField, idValues) {
 // agregándolo después de las filas que ya existan (no las borra).
 function writeSeedTareas_(sh, nodes) {
   var rows = [];
-  var hoy = new Date().toISOString().slice(0, 10);
+  var hoy = hoyEcuador_();
   var writeNode = function (node, parentId) {
     var id = Utilities.getUuid();
     rows.push([
@@ -332,7 +340,7 @@ function createProject(body) {
 
   ss.getSheets()[0].setName(TABS.CONFIG);
   ss.getSheetByName(TABS.CONFIG).getRange(1, 1, 1, 4).setValues([['Nombre', 'Objetivo', 'Resultados', 'Creado']]);
-  ss.getSheetByName(TABS.CONFIG).getRange(2, 1, 1, 4).setValues([[nombre, body.objetivo || '', body.resultados || '', new Date().toISOString().slice(0, 10)]]);
+  ss.getSheetByName(TABS.CONFIG).getRange(2, 1, 1, 4).setValues([[nombre, body.objetivo || '', body.resultados || '', hoyEcuador_()]]);
 
   var shUsuarios = ss.insertSheet(TABS.USUARIOS);
   shUsuarios.getRange(1, 1, 1, 4).setValues([['Nombre', 'Rol', 'PasswordHash', 'Email']]);
@@ -355,16 +363,16 @@ function createProject(body) {
 
   // fila admin
   appendRow_(ss, TABS.USUARIOS, { Nombre: adminNombre, Rol: 'admin', PasswordHash: hashPassword_(adminPassword), Email: adminEmail });
-  getOrCreateSubfolder_(folder, adminNombre);
 
   // participantes (evita duplicar al admin si aparece también en la lista)
+  // Las carpetas de cada usuario ya no se crean aquí en la raíz: ahora se
+  // organizan por módulo/tarea y se crean solas la primera vez que alguien
+  // sube un archivo a esa tarea (ver uploadFile / getModuleFolder_).
   participantes.forEach(function (p) {
     var nombreP = (p.nombre || '').trim();
     if (!nombreP || nombreP.toLowerCase() === adminNombre.toLowerCase()) return;
     appendRow_(ss, TABS.USUARIOS, { Nombre: nombreP, Rol: p.rol === 'admin' ? 'admin' : 'participante', PasswordHash: p.rol === 'admin' ? hashPassword_(body.adminPassword) : '', Email: (p.email || '').trim() });
-    getOrCreateSubfolder_(folder, nombreP);
   });
-  getOrCreateSubfolder_(folder, 'General');
 
   addToIndex_(folder.getId(), nombre, ss.getId());
   return { ok: true, projectId: folder.getId() };
@@ -386,12 +394,12 @@ function saveConfig(body) {
 // "2026-09-14T05:00:00.000Z" — estas funciones evitan eso.
 function fmtDateOnly_(val) {
   if (!val) return '';
-  if (val instanceof Date) return Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  if (val instanceof Date) return Utilities.formatDate(val, TZ, 'yyyy-MM-dd');
   return String(val);
 }
 function fmtDateTime_(val) {
   if (!val) return '';
-  if (val instanceof Date) return Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
+  if (val instanceof Date) return Utilities.formatDate(val, TZ, 'yyyy-MM-dd HH:mm');
   return String(val);
 }
 
@@ -479,7 +487,6 @@ function addParticipant(body) {
   if (existentes.some(function (u) { return String(u.Nombre).toLowerCase() === nombre.toLowerCase(); })) return { ok: false, error: 'Ese usuario ya existe en el proyecto.' };
   var esAdmin = body.rol === 'admin';
   appendRow_(ss, TABS.USUARIOS, { Nombre: nombre, Rol: esAdmin ? 'admin' : 'participante', PasswordHash: esAdmin ? hashPassword_(body.nuevoPassword || body.adminPassword) : '', Email: email });
-  getOrCreateSubfolder_(getProjectFolder_(body.projectId), nombre);
   return { ok: true };
 }
 
@@ -678,7 +685,7 @@ function ensureAccesosSheet_(ss) {
 function logDocAccess(body) {
   var ss = openControlSheet_(body.projectId);
   var sh = ensureAccesosSheet_(ss);
-  sh.appendRow([new Date().toISOString(), body.taskId || '', body.linkId || '', body.documento || '', body.usuario || '', body.rol || '']);
+  sh.appendRow([ahoraEcuadorISO_(), body.taskId || '', body.linkId || '', body.documento || '', body.usuario || '', body.rol || '']);
   return { ok: true };
 }
 
@@ -726,6 +733,30 @@ function updateSprint(body) {
 // ============================================================
 // ARCHIVOS (con control de permisos por responsable)
 // ============================================================
+// Encuentra el módulo (tarea de nivel superior, sin ParentID) al que
+// pertenece una tarea/subtarea, subiendo por la cadena de padres.
+function encontrarModulo_(tareasFlat, taskId) {
+  var byId = {};
+  tareasFlat.forEach(function (t) { byId[t.ID] = t; });
+  var actual = byId[taskId];
+  if (!actual) return null;
+  var visitados = {};
+  while (actual.ParentID && byId[actual.ParentID] && !visitados[actual.ID]) {
+    visitados[actual.ID] = true;
+    actual = byId[actual.ParentID];
+  }
+  return actual;
+}
+
+// Estructura de carpetas: <Proyecto>/<Módulo>/<Usuario que sube>/archivo
+// (antes todos los archivos de una persona iban juntos en una sola carpeta
+// sin separar por módulo/tarea).
+function getModuleUserFolder_(projectFolder, tareasFlat, taskId, usuario) {
+  var modulo = encontrarModulo_(tareasFlat, taskId);
+  var moduloFolder = getOrCreateSubfolder_(projectFolder, (modulo && modulo.Titulo) ? modulo.Titulo : 'General');
+  return getOrCreateSubfolder_(moduloFolder, usuario || 'General');
+}
+
 function uploadFile(body) {
   var folder = getProjectFolder_(body.projectId);
   var ss = getControlSheet_(folder);
@@ -742,16 +773,15 @@ function uploadFile(body) {
     return { ok: false, error: 'No autorizado: solo "' + (tarea.Responsable || 'el responsable asignado') + '" puede subir archivos a esta tarea.' };
   }
 
-  // El archivo se guarda en la carpeta de quien lo sube (no la del
-  // responsable de la tarea, que puede ser otra persona o estar vacía).
-  var subfolderName = body.usuario ? body.usuario : 'General';
-  var subfolder = getOrCreateSubfolder_(folder, subfolderName);
+  // El archivo se organiza por módulo (tarea principal) y, dentro de este,
+  // por la persona que lo sube: <Módulo>/<Usuario>/archivo.
+  var subfolder = getModuleUserFolder_(folder, tareas, body.taskId, body.usuario);
   var bytes = Utilities.base64Decode(body.base64);
   var blob = Utilities.newBlob(bytes, body.mimeType || 'application/octet-stream', body.filename || 'archivo');
   var file = subfolder.createFile(blob);
 
   var id = Utilities.getUuid();
-  var fecha = new Date().toISOString().slice(0, 10);
+  var fecha = hoyEcuador_();
   appendRow_(ss, TABS.ARCHIVOS, { ID: id, TareaID: body.taskId, Nombre: file.getName(), DriveFileId: file.getId(), Url: file.getUrl(), SubidoPor: body.usuario, Fecha: fecha });
 
   return { ok: true, archivo: { id: id, nombre: file.getName(), driveFileId: file.getId(), url: file.getUrl(), subidoPor: body.usuario, fecha: fecha } };

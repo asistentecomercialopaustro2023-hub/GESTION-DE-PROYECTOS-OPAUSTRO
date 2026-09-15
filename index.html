@@ -504,11 +504,16 @@ async function apiPost(action, payload){
 
 function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,10); }
 function today(){ return new Date().toISOString().slice(0,10); }
-// Fecha y hora local, formato compacto para "Últ. Act.": 2026-09-14 16:54
+// Fecha y hora en horario de Ecuador (America/Guayaquil), sin importar en
+// qué zona horaria esté el navegador de quien esté usando la app. Esto es
+// solo un valor optimista para mostrar de inmediato en pantalla; el backend
+// (Code.gs) siempre recalcula y guarda la hora real de Ecuador.
 function nowStamp(){
-  const d = new Date();
-  const pad = n => String(n).padStart(2,'0');
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Guayaquil', year:'numeric', month:'2-digit', day:'2-digit',
+    hour:'2-digit', minute:'2-digit', hour12:false
+  }).formatToParts(new Date()).reduce((o,p)=>{ o[p.type]=p.value; return o; }, {});
+  return `${partes.year}-${partes.month}-${partes.day} ${partes.hour}:${partes.minute}`;
 }
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function fileToBase64(file){
@@ -1231,7 +1236,10 @@ function renderLinksListView(){
       try{
         const r = await apiGet('getDocAccessLog', { projectId: activeProjectId, linkId });
         if(!r.ok || !r.accesos.length){ box2.textContent = 'Sin accesos registrados todavía.'; return; }
-        box2.innerHTML = 'Últimos accesos: ' + r.accesos.map(a=>`${escapeHtml(a.usuario)} (${a.rol}) — ${new Date(a.fecha).toLocaleString()}`).join(' · ');
+        // La fecha ya viene formateada en horario de Ecuador desde el backend;
+        // se muestra tal cual, sin volver a interpretarla con new Date() (eso
+        // la reconvertiría a la zona horaria del navegador de quien mira el historial).
+        box2.innerHTML = 'Últimos accesos: ' + r.accesos.map(a=>`${escapeHtml(a.usuario)} (${a.rol}) — ${escapeHtml(String(a.fecha).replace('T',' '))}`).join(' · ');
       } catch(err){ box2.textContent = 'No se pudo cargar el historial.'; }
     };
   });
