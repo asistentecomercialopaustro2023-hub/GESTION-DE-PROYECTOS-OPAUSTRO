@@ -118,10 +118,11 @@ input[type=date]{background:var(--bg3);border:1px solid var(--line);color:var(--
 select.resp-input{cursor:pointer;font-weight:600}
 select.resp-input.is-placeholder{color:#9aa4b2;font-weight:400;font-style:italic}
 .resp-input:focus{background:var(--bg3)}
-.files-cell{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.file-chip{background:var(--bg3);border:1px solid var(--line);border-radius:12px;padding:2px 8px;font-size:.72rem;display:flex;align-items:center;gap:4px}
-.file-chip a{text-decoration:none;color:var(--txt)}
-.file-chip button{background:none;border:none;color:var(--red);cursor:pointer;font-size:.8rem;padding:0}
+.files-cell{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.file-chip{background:var(--bg3);border:1px solid var(--line);border-radius:6px;padding:2px;font-size:.72rem;display:inline-flex;align-items:center;gap:2px;position:relative}
+.file-chip a{text-decoration:none;color:var(--txt);display:inline-flex}
+.file-chip button{background:var(--bg2);border:1px solid var(--line);border-radius:50%;color:var(--red);cursor:pointer;font-size:.6rem;line-height:1;padding:0;width:14px;height:14px;position:absolute;top:-6px;right:-6px;display:none;align-items:center;justify-content:center}
+.file-chip:hover button{display:flex}
 .add-file{background:var(--bg3);border:1px dashed var(--line);color:var(--txt-dim);border-radius:50%;width:22px;height:22px;flex-shrink:0}
 .add-file[disabled]{opacity:.35;cursor:not-allowed}
 .depth-indent{display:inline-block}
@@ -449,6 +450,22 @@ const LINK_ICON_SVG = {
   slide: svgBadge('#D24726','P'),
   enlace: `<svg width="16" height="16" viewBox="0 0 24 24" style="vertical-align:-3px;flex-shrink:0"><rect width="24" height="24" rx="5" fill="#5b7cff"/><path d="M9 12a3 3 0 013-3h1M15 12a3 3 0 01-3 3h-1" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`
 };
+// Ícono para archivos subidos (no documentos en línea), según su extensión,
+// para no ocupar espacio con nombres largos en la columna Archivos.
+const IMG_ICON_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" style="vertical-align:-3px;flex-shrink:0"><rect width="24" height="24" rx="5" fill="#8e44ad"/><circle cx="9" cy="10" r="2" fill="#fff"/><path d="M4 18l5.5-6 4 4.5L17 12l3 6z" fill="#fff"/></svg>`;
+const PDF_ICON_SVG = svgBadge('#c0392b','PDF');
+const ZIP_ICON_SVG = svgBadge('#7f8c8d','ZIP');
+const FILE_ICON_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" style="vertical-align:-3px;flex-shrink:0"><rect width="24" height="24" rx="5" fill="#4a5568"/><path d="M8 6h6l3 3v9H8z" fill="none" stroke="#fff" stroke-width="1.6"/><path d="M14 6v3h3" fill="none" stroke="#fff" stroke-width="1.6"/></svg>`;
+function fileIconFor(nombre){
+  const ext = String(nombre||'').split('.').pop().toLowerCase();
+  if(['doc','docx'].includes(ext)) return LINK_ICON_SVG.doc;
+  if(['xls','xlsx','csv'].includes(ext)) return LINK_ICON_SVG.sheet;
+  if(['ppt','pptx'].includes(ext)) return LINK_ICON_SVG.slide;
+  if(['jpg','jpeg','png','gif','webp','bmp','svg'].includes(ext)) return IMG_ICON_SVG;
+  if(ext==='pdf') return PDF_ICON_SVG;
+  if(['zip','rar','7z'].includes(ext)) return ZIP_ICON_SVG;
+  return FILE_ICON_SVG;
+}
 
 if(!WEBAPP_URL || WEBAPP_URL.indexOf('PEGA_AQUI') === 0){
   document.getElementById('setupBanner').style.display = 'block';
@@ -947,7 +964,7 @@ function renderTaskRow(t, depth){
   tr.ondragstart = ()=>{ dragTaskId = t.id; };
   const chev = t.hijos.length ? `<span class="chev" data-toggle="${t.id}">${t.expandido?'▾':'▸'}</span>` : `<span class="chev leaf">•</span>`;
   const indent = `<span class="depth-indent" style="width:${depth*22}px"></span>`;
-  const filesHtml = (t.archivos||[]).map((f)=>`<span class="file-chip"><a href="${f.url}" target="_blank" rel="noopener">📎 ${escapeHtml(f.nombre)}</a>${(isAdmin()||f.subidoPor===session.usuario)?`<button data-file-del="${t.id}:${f.id}">✕</button>`:''}</span>`).join('');
+  const filesHtml = (t.archivos||[]).map((f)=>`<span class="file-chip" title="${escapeHtml(f.nombre)}"><a href="${f.url}" target="_blank" rel="noopener">${fileIconFor(f.nombre)}</a>${(isAdmin()||f.subidoPor===session.usuario)?`<button data-file-del="${t.id}:${f.id}" title="Eliminar ${escapeHtml(f.nombre)}">✕</button>`:''}</span>`).join('');
   const puedeSubir = canUploadTo(t);
   let docIconsHtml = '';
   let manageBtnHtml = '';
