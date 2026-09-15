@@ -331,6 +331,20 @@ function saveConfig(body) {
   return { ok: true };
 }
 
+// Google Sheets a veces guarda un texto de fecha como un objeto Date real.
+// Si no se formatea explícitamente, JSON.stringify lo convierte a algo como
+// "2026-09-14T05:00:00.000Z" — estas funciones evitan eso.
+function fmtDateOnly_(val) {
+  if (!val) return '';
+  if (val instanceof Date) return Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  return String(val);
+}
+function fmtDateTime_(val) {
+  if (!val) return '';
+  if (val instanceof Date) return Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
+  return String(val);
+}
+
 function getProjectData(projectId) {
   var folder = getProjectFolder_(projectId);
   var ss = getControlSheet_(folder);
@@ -349,9 +363,9 @@ function getProjectData(projectId) {
   tareasFlat.forEach(function (t) {
     byId[t.ID] = {
       id: t.ID, parentId: t.ParentID || null, titulo: t.Titulo, responsable: t.Responsable || '',
-      estado: t.Estado || 'No iniciado', vencimiento: t.Vencimiento || '', prioridad: t.Prioridad || 'Media',
-      notas: t.Notas || '', cronogramaInicio: t.CronogramaInicio || '', cronogramaFin: t.CronogramaFin || '',
-      sprintId: t.SprintID || null, actualizado: t.Actualizado || '', expandido: false,
+      estado: t.Estado || 'No iniciado', vencimiento: fmtDateOnly_(t.Vencimiento), prioridad: t.Prioridad || 'Media',
+      notas: t.Notas || '', cronogramaInicio: fmtDateOnly_(t.CronogramaInicio), cronogramaFin: fmtDateOnly_(t.CronogramaFin),
+      sprintId: t.SprintID || null, actualizado: fmtDateTime_(t.Actualizado), expandido: false,
       enlaces: leerEnlaces_(t),
       archivos: archivosPorTarea[t.ID] || [], hijos: []
     };
@@ -416,7 +430,7 @@ function addTask(body) {
   appendRow_(ss, TABS.TAREAS, {
     ID: id, ParentID: body.parentId || '', Titulo: body.titulo || 'Nueva tarea', Responsable: '',
     Estado: 'No iniciado', Vencimiento: '', Prioridad: 'Media', Notas: '', CronogramaInicio: '', CronogramaFin: '',
-    SprintID: '', Actualizado: new Date().toISOString().slice(0, 10)
+    SprintID: '', Actualizado: fmtDateTime_(new Date())
   });
   return { ok: true, id: id };
 }
@@ -427,7 +441,7 @@ function updateTask(body) {
   var fieldMap = { titulo: 'Titulo', responsable: 'Responsable', estado: 'Estado', vencimiento: 'Vencimiento', prioridad: 'Prioridad', notas: 'Notas', cronogramaInicio: 'CronogramaInicio', cronogramaFin: 'CronogramaFin', sprintId: 'SprintID' };
   var row = {};
   Object.keys(patch).forEach(function (k) { if (fieldMap[k]) row[fieldMap[k]] = patch[k]; });
-  row.Actualizado = new Date().toISOString().slice(0, 10);
+  row.Actualizado = fmtDateTime_(new Date());
   var okUpd = updateRowById_(ss, TABS.TAREAS, 'ID', body.taskId, row);
   return { ok: okUpd };
 }

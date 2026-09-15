@@ -99,6 +99,7 @@ tr.task-row:hover{background:#1a2350}
 tr.add-row td{color:var(--txt-dim);cursor:pointer;font-style:italic}
 tr.add-row:hover td{color:var(--txt)}
 .task-name{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.doc-icons-row{flex-basis:100%;display:flex;align-items:center;gap:6px;margin-left:22px}
 .chev{cursor:pointer;width:16px;text-align:center;color:var(--txt-dim);user-select:none}
 .chev.leaf{visibility:hidden}
 .task-title{cursor:text;outline:none;border-bottom:1px dashed transparent}
@@ -113,8 +114,9 @@ select.tag-select{border:none;border-radius:4px;padding:5px 8px;font-weight:700;
 .prio-Media{background:#ffcb47}
 .prio-Alta{background:#ff5ac4}
 input[type=date]{background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:4px;padding:4px 6px;font-size:.78rem}
-input.resp-input{background:transparent;border:none;color:var(--txt);width:100%}
-input.resp-input:focus{background:var(--bg3)}
+.resp-input{background:transparent;border:none;color:var(--txt);width:100%}
+select.resp-input{cursor:pointer}
+.resp-input:focus{background:var(--bg3)}
 .files-cell{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .file-chip{background:var(--bg3);border:1px solid var(--line);border-radius:12px;padding:2px 8px;font-size:.72rem;display:flex;align-items:center;gap:4px}
 .file-chip a{text-decoration:none;color:var(--txt)}
@@ -939,20 +941,27 @@ function renderTaskRow(t, depth){
   const indent = `<span class="depth-indent" style="width:${depth*22}px"></span>`;
   const filesHtml = (t.archivos||[]).map((f)=>`<span class="file-chip"><a href="${f.url}" target="_blank" rel="noopener">📎 ${escapeHtml(f.nombre)}</a>${(isAdmin()||f.subidoPor===session.usuario)?`<button data-file-del="${t.id}:${f.id}">✕</button>`:''}</span>`).join('');
   const puedeSubir = canUploadTo(t);
-  let docLinkHtml = '';
+  let docIconsHtml = '';
+  let manageBtnHtml = '';
   if(depth===0){
     // Solo el ícono (logo por tipo) en la tabla, para no ocupar espacio con
     // nombres largos; el nombre completo queda como tooltip (title).
-    docLinkHtml += (t.enlaces||[]).map(l=>`<a class="doc-link icon-only" href="${escapeHtml(l.url)}" target="_blank" rel="noopener" title="${escapeHtml(l.nombre)}" data-log-doc="${t.id}:${l.id}:${escapeHtml(l.nombre)}">${LINK_ICON_SVG[l.tipo]||LINK_ICON_SVG.enlace}</a>`).join('');
-    if(isAdmin()) docLinkHtml += `<button class="btn ghost small" data-manage-links="${t.id}" title="Agregar o quitar enlaces/documentos">🔗+</button>`;
+    docIconsHtml = (t.enlaces||[]).map(l=>`<a class="doc-link icon-only" href="${escapeHtml(l.url)}" target="_blank" rel="noopener" title="${escapeHtml(l.nombre)}" data-log-doc="${t.id}:${l.id}:${escapeHtml(l.nombre)}">${LINK_ICON_SVG[l.tipo]||LINK_ICON_SVG.enlace}</a>`).join('');
+    if(isAdmin()) manageBtnHtml = `<button class="btn ghost small" data-manage-links="${t.id}" title="Agregar o quitar enlaces/documentos">🔗+</button>`;
   }
+  const usuarios = (projectData.usuarios||[]);
+  const respOptions = ['<option value="">—</option>']
+    .concat(usuarios.map(u=>`<option ${u.nombre===t.responsable?'selected':''}>${escapeHtml(u.nombre)}</option>`))
+    .concat((t.responsable && !usuarios.some(u=>u.nombre===t.responsable)) ? [`<option selected>${escapeHtml(t.responsable)}</option>`] : [])
+    .join('');
   tr.innerHTML = `
     <td><div class="task-name">${indent}${chev}
       <span class="task-title" contenteditable="true" data-edit-title="${t.id}">${escapeHtml(t.titulo)}</span>
       <button class="btn ghost small" data-add-sub="${t.id}" title="Agregar subtarea">+</button>
-      ${docLinkHtml}
+      ${manageBtnHtml}
+      ${docIconsHtml ? `<div class="doc-icons-row">${docIconsHtml}</div>` : ''}
     </div></td>
-    <td><input class="resp-input" placeholder="—" value="${escapeHtml(t.responsable)}" data-field="responsable" data-id="${t.id}"></td>
+    <td><select class="resp-input" data-field="responsable" data-id="${t.id}">${respOptions}</select></td>
     <td><select class="tag-select estado-${t.estado.replace(/ /g,'-')}" data-field="estado" data-id="${t.id}">
       ${ESTADOS.map(e=>`<option ${e===t.estado?'selected':''}>${e}</option>`).join('')}</select></td>
     <td><input type="date" value="${t.vencimiento}" data-field="vencimiento" data-id="${t.id}"></td>
