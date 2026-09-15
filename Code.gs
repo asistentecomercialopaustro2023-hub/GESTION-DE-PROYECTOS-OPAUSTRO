@@ -71,6 +71,7 @@ function doPost(e) {
     if (!handlers[action]) return jsonResponse({ ok: false, error: 'Acción no reconocida: ' + action });
     var result = handlers[action](body);
     if (body.projectId) invalidateProjectCache_(body.projectId);
+    else { try { CacheService.getScriptCache().remove('listProjects'); } catch (e) { /* no-op */ } } // ej. createProject
     return jsonResponse(result);
   } catch (err) {
     return jsonResponse({ ok: false, error: String(err) });
@@ -134,7 +135,11 @@ function openControlSheet_(projectId) {
 // de pestaña o volver a abrir el mismo proyecto sea instantáneo. Se invalida
 // automáticamente en doPost tras cualquier acción que reciba projectId.
 function invalidateProjectCache_(projectId) {
-  try { CacheService.getScriptCache().remove('projdata_' + projectId); } catch (e) { /* no-op */ }
+  try {
+    var cache = CacheService.getScriptCache();
+    cache.remove('projdata_' + projectId);
+    cache.remove('listProjects');
+  } catch (e) { /* no-op */ }
 }
 
 function getOrCreateSubfolder_(parent, name) {
@@ -250,6 +255,11 @@ function collectDescendants_(tareas, id) {
 // PROYECTOS
 // ============================================================
 function listProjects() {
+  var cache = CacheService.getScriptCache();
+  var cached;
+  try { cached = cache.get('listProjects'); } catch (e) { cached = null; }
+  if (cached) return JSON.parse(cached);
+
   var idx = getIndex_();
 
   // Migración: la primera vez, si el índice está vacío, se buscan los
@@ -291,7 +301,9 @@ function listProjects() {
       });
     } catch (err) { /* carpeta eliminada, inaccesible o sin Control válido: se ignora */ }
   });
-  return { ok: true, proyectos: out };
+  var result = { ok: true, proyectos: out };
+  try { cache.put('listProjects', JSON.stringify(result), 20); } catch (e) { /* no-op */ }
+  return result;
 }
 
 function createProject(body) {
