@@ -69,7 +69,9 @@ function doPost(e) {
       logDocAccess: logDocAccess
     };
     if (!handlers[action]) return jsonResponse({ ok: false, error: 'Acción no reconocida: ' + action });
-    return jsonResponse(handlers[action](body));
+    var result = handlers[action](body);
+    if (body.projectId) invalidateProjectCache_(body.projectId);
+    return jsonResponse(result);
   } catch (err) {
     return jsonResponse({ ok: false, error: String(err) });
   }
@@ -101,12 +103,38 @@ function getIndex_() {
 function saveIndex_(arr) {
   PropertiesService.getScriptProperties().setProperty('PROJECT_INDEX', JSON.stringify(arr));
 }
-function addToIndex_(id, nombre) {
+function addToIndex_(id, nombre, controlSheetId) {
   var idx = getIndex_();
-  if (!idx.some(function (p) { return p.id === id; })) {
-    idx.push({ id: id, nombre: nombre });
+  var found = idx.filter(function (p) { return p.id === id; })[0];
+  if (!found) {
+    idx.push({ id: id, nombre: nombre, controlSheetId: controlSheetId || '' });
+    saveIndex_(idx);
+  } else if (controlSheetId && !found.controlSheetId) {
+    found.controlSheetId = controlSheetId;
     saveIndex_(idx);
   }
+}
+
+// Evita tener que buscar el Sheet "Control" por nombre dentro de la carpeta
+// (una llamada lenta a Drive) en cada solicitud: se guarda su ID una sola
+// vez en el índice y de ahí en adelante se abre directo por ID.
+function getControlSheetId_(projectId) {
+  var idx = getIndex_();
+  var entry = idx.filter(function (p) { return p.id === projectId; })[0];
+  if (entry && entry.controlSheetId) return entry.controlSheetId;
+  var ss = getControlSheet_(getProjectFolder_(projectId));
+  addToIndex_(projectId, entry ? entry.nombre : '', ss.getId());
+  return ss.getId();
+}
+function openControlSheet_(projectId) {
+  return SpreadsheetApp.openById(getControlSheetId_(projectId));
+}
+
+// Cache corto (segundos) del resultado de getProjectData, para que cambiar
+// de pestaña o volver a abrir el mismo proyecto sea instantáneo. Se invalida
+// automáticamente en doPost tras cualquier acción que reciba projectId.
+function invalidateProjectCache_(projectId) {
+  try { CacheService.getScriptCache().remove('projdata_' + projectId); } catch (e) { /* no-op */ }
 }
 
 function getOrCreateSubfolder_(parent, name) {
@@ -241,15 +269,23 @@ function listProjects() {
   var out = [];
   idx.forEach(function (entry) {
     try {
-      var folder = DriveApp.getFolderById(entry.id);
-      var ss = getControlSheet_(folder);
+      var ss;
+      if (entry.controlSheetId) {
+        ss = SpreadsheetApp.openById(entry.controlSheetId);
+      } else {
+        // Proyecto sin controlSheetId guardado todavía (creado antes de este
+        // cambio): se busca una vez por carpeta y se guarda para la próxima.
+        var folder = DriveApp.getFolderById(entry.id);
+        ss = getControlSheet_(folder);
+        addToIndex_(entry.id, entry.nombre, ss.getId());
+      }
       var config = readTable_(ss, TABS.CONFIG)[0] || {};
       var tareas = readTable_(ss, TABS.TAREAS);
       var total = tareas.length;
       var hechas = tareas.filter(function (t) { return t.Estado === 'Hecho'; }).length;
       var usuarios = readTable_(ss, TABS.USUARIOS).map(function (u) { return { nombre: u.Nombre, rol: u.Rol, email: u.Email || '' }; });
       out.push({
-        id: folder.getId(), nombre: config.Nombre || folder.getName(),
+        id: entry.id, nombre: config.Nombre || entry.nombre,
         objetivo: config.Objetivo || '', resultados: config.Resultados || '',
         creado: config.Creado || '', total: total, hechas: hechas, usuarios: usuarios
       });
@@ -316,12 +352,12 @@ function createProject(body) {
   });
   getOrCreateSubfolder_(folder, 'General');
 
-  addToIndex_(folder.getId(), nombre);
+  addToIndex_(folder.getId(), nombre, ss.getId());
   return { ok: true, projectId: folder.getId() };
 }
 
 function saveConfig(body) {
-  var ss = getControlSheet_(getProjectFolder_(body.projectId));
+  var ss = openControlSheet_(body.projectId);
   var sh = ss.getSheetByName(TABS.CONFIG);
   sh.getRange(2, 2, 1, 2).setValues([[body.objetivo || '', body.resultados || '']]);
   if (body.nombre) {
@@ -346,8 +382,13 @@ function fmtDateTime_(val) {
 }
 
 function getProjectData(projectId) {
-  var folder = getProjectFolder_(projectId);
-  var ss = getControlSheet_(folder);
+  var cache = CacheService.getScriptCache();
+  var cacheKey = 'projdata_' + projectId;
+  var cached;
+  try { cached = cache.get(cacheKey); } catch (e) { cached = null; }
+  if (cached) return JSON.parse(cached);
+
+  var ss = openControlSheet_(projectId);
   var config = readTable_(ss, TABS.CONFIG)[0] || {};
   var usuarios = readTable_(ss, TABS.USUARIOS).map(function (u) { return { nombre: u.Nombre, rol: u.Rol, email: u.Email || '' }; }); // nunca exponer PasswordHash
   var tareasFlat = readTable_(ss, TABS.TAREAS);
@@ -377,11 +418,15 @@ function getProjectData(projectId) {
     else roots.push(node);
   });
 
-  return {
+  var result = {
     ok: true,
     proyecto: { id: projectId, nombre: config.Nombre || '', objetivo: config.Objetivo || '', resultados: config.Resultados || '', creado: config.Creado || '' },
     usuarios: usuarios, tareas: roots, sprints: sprints
   };
+  // Cache breve: si el proyecto es muy grande y no cabe (límite ~100KB de
+  // CacheService), simplemente no se cachea, sin afectar la respuesta.
+  try { cache.put(cacheKey, JSON.stringify(result), 30); } catch (e) { /* no-op */ }
+  return result;
 }
 
 // ============================================================
@@ -396,7 +441,7 @@ function requireAdmin_(ss, adminUsuario, adminPassword) {
 }
 
 function login(body) {
-  var ss = getControlSheet_(getProjectFolder_(body.projectId));
+  var ss = openControlSheet_(body.projectId);
   var usuarios = readTable_(ss, TABS.USUARIOS);
   var u = usuarios.filter(function (x) { return String(x.Nombre).toLowerCase() === String(body.usuario || '').toLowerCase(); })[0];
   if (!u) return { ok: false, error: 'Usuario no encontrado en este proyecto.' };
@@ -407,7 +452,7 @@ function login(body) {
 }
 
 function addParticipant(body) {
-  var ss = getControlSheet_(getProjectFolder_(body.projectId));
+  var ss = openControlSheet_(body.projectId);
   var err = requireAdmin_(ss, body.adminUsuario, body.adminPassword);
   if (err) return { ok: false, error: err };
   var nombre = (body.nombre || '').trim();
@@ -425,7 +470,7 @@ function addParticipant(body) {
 // TAREAS
 // ============================================================
 function addTask(body) {
-  var ss = getControlSheet_(getProjectFolder_(body.projectId));
+  var ss = openControlSheet_(body.projectId);
   var id = Utilities.getUuid();
   appendRow_(ss, TABS.TAREAS, {
     ID: id, ParentID: body.parentId || '', Titulo: body.titulo || 'Nueva tarea', Responsable: '',
@@ -436,7 +481,7 @@ function addTask(body) {
 }
 
 function updateTask(body) {
-  var ss = getControlSheet_(getProjectFolder_(body.projectId));
+  var ss = openControlSheet_(body.projectId);
   var patch = body.patch || {};
   var fieldMap = { titulo: 'Titulo', responsable: 'Responsable', estado: 'Estado', vencimiento: 'Vencimiento', prioridad: 'Prioridad', notas: 'Notas', cronogramaInicio: 'CronogramaInicio', cronogramaFin: 'CronogramaFin', sprintId: 'SprintID' };
   var row = {};
@@ -449,7 +494,7 @@ function updateTask(body) {
 // Importa una plantilla de tareas (árbol) a un proyecto YA EXISTENTE,
 // sin borrar las tareas que ya tenga. Solo el admin del proyecto puede hacerlo.
 function importTareas(body) {
-  var ss = getControlSheet_(getProjectFolder_(body.projectId));
+  var ss = openControlSheet_(body.projectId);
   var err = requireAdmin_(ss, body.adminUsuario, body.adminPassword);
   if (err) return { ok: false, error: err };
   if (!body.seedTareas || !body.seedTareas.length) return { ok: false, error: 'No se recibió ninguna tarea para importar.' };
@@ -483,7 +528,7 @@ function encontrarTarea_(ss, taskId) {
 // Agrega un enlace ya existente (pegado por el admin). Se guarda tal cual,
 // sin mover ni tocar ningún archivo de Drive.
 function addTaskLink(body) {
-  var ss = getControlSheet_(getProjectFolder_(body.projectId));
+  var ss = openControlSheet_(body.projectId);
   var err = requireAdmin_(ss, body.adminUsuario, body.adminPassword);
   if (err) return { ok: false, error: err };
   var row = encontrarTarea_(ss, body.taskId);
@@ -502,7 +547,7 @@ function addTaskLink(body) {
 // a Word/Excel/PowerPoint) con el nombre que pida el admin, guardado dentro
 // de la carpeta del proyecto correspondiente, y lo enlaza a la tarea.
 function createOnlineDoc(body) {
-  var ss = getControlSheet_(getProjectFolder_(body.projectId));
+  var ss = openControlSheet_(body.projectId);
   var err = requireAdmin_(ss, body.adminUsuario, body.adminPassword);
   if (err) return { ok: false, error: err };
   var row = encontrarTarea_(ss, body.taskId);
@@ -538,7 +583,7 @@ function createOnlineDoc(body) {
 // Quita un enlace de la lista de la tarea (no borra el archivo de Drive,
 // solo la referencia — así no se elimina por accidente un documento compartido).
 function deleteTaskLink(body) {
-  var ss = getControlSheet_(getProjectFolder_(body.projectId));
+  var ss = openControlSheet_(body.projectId);
   var err = requireAdmin_(ss, body.adminUsuario, body.adminPassword);
   if (err) return { ok: false, error: err };
   var row = encontrarTarea_(ss, body.taskId);
@@ -565,14 +610,14 @@ function ensureAccesosSheet_(ss) {
 }
 
 function logDocAccess(body) {
-  var ss = getControlSheet_(getProjectFolder_(body.projectId));
+  var ss = openControlSheet_(body.projectId);
   var sh = ensureAccesosSheet_(ss);
   sh.appendRow([new Date().toISOString(), body.taskId || '', body.linkId || '', body.documento || '', body.usuario || '', body.rol || '']);
   return { ok: true };
 }
 
 function getDocAccessLog(p) {
-  var ss = getControlSheet_(getProjectFolder_(p.projectId));
+  var ss = openControlSheet_(p.projectId);
   ensureAccesosSheet_(ss);
   var rows = readTable_(ss, TABS.ACCESOS).filter(function (r) { return String(r.LinkId) === String(p.linkId); });
   rows.sort(function (a, b) { return new Date(b.Fecha) - new Date(a.Fecha); });
@@ -583,7 +628,7 @@ function getDocAccessLog(p) {
 }
 
 function deleteTask(body) {
-  var ss = getControlSheet_(getProjectFolder_(body.projectId));
+  var ss = openControlSheet_(body.projectId);
   var tareas = readTable_(ss, TABS.TAREAS);
   var ids = collectDescendants_(tareas, body.taskId);
   deleteRowsWhere_(ss, TABS.TAREAS, 'ID', ids);
@@ -595,14 +640,14 @@ function deleteTask(body) {
 // SPRINTS
 // ============================================================
 function addSprint(body) {
-  var ss = getControlSheet_(getProjectFolder_(body.projectId));
+  var ss = openControlSheet_(body.projectId);
   var id = Utilities.getUuid();
   appendRow_(ss, TABS.SPRINTS, { ID: id, Nombre: body.nombre || 'Sprint', Inicio: body.inicio || '', Fin: body.fin || '', Meta: body.meta || '' });
   return { ok: true, id: id };
 }
 
 function updateSprint(body) {
-  var ss = getControlSheet_(getProjectFolder_(body.projectId));
+  var ss = openControlSheet_(body.projectId);
   var patch = {};
   if (body.nombre !== undefined) patch.Nombre = body.nombre;
   if (body.inicio !== undefined) patch.Inicio = body.inicio;
@@ -645,7 +690,7 @@ function uploadFile(body) {
 }
 
 function deleteFile(body) {
-  var ss = getControlSheet_(getProjectFolder_(body.projectId));
+  var ss = openControlSheet_(body.projectId);
   var archivos = readTable_(ss, TABS.ARCHIVOS);
   var a = archivos.filter(function (x) { return String(x.ID) === String(body.archivoId); })[0];
   if (!a) return { ok: false, error: 'Archivo no encontrado.' };
