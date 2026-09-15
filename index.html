@@ -1,0 +1,1397 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Gestión de Proyectos</title>
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#0f1329; --bg2:#1a2040; --bg3:#232b52; --line:#333c6b;
+  --txt:#e7ebff; --txt-dim:#9aa3d1; --accent:#5b7cff;
+  --pink:#ff5ac4; --yellow:#ffcb47; --green:#00c875; --gray:#7f8bb3; --red:#e2445c; --purple:#a25ddc;
+  font-family:"Segoe UI",Arial,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);min-height:100vh}
+a{color:inherit}
+button{cursor:pointer}
+::-webkit-scrollbar{height:10px;width:10px}
+::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:6px}
+
+.setup-banner{background:#5a2e00;color:#ffd8a8;padding:10px 20px;font-size:.82rem;text-align:center}
+.setup-banner code{background:#00000040;padding:2px 6px;border-radius:4px}
+
+/* ---------- HOME SCREEN ---------- */
+#homeScreen{min-height:100vh}
+.home-header{display:flex;align-items:center;gap:18px;padding:26px 40px;background:linear-gradient(135deg,#1a2040,#232b52);border-bottom:1px solid var(--line)}
+.logo-badge{width:58px;height:58px;border-radius:14px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0;box-shadow:0 4px 14px rgba(0,0,0,.35);overflow:hidden}
+.home-title h1{margin:0;font-size:1.5rem}
+.home-title small{color:var(--txt-dim)}
+.home-main{padding:32px 40px;max-width:1200px;margin:0 auto}
+.home-toolbar{display:flex;align-items:center;gap:12px;margin-bottom:22px;flex-wrap:wrap}
+.home-toolbar input[type=text]{background:var(--bg2);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:10px 14px;min-width:240px;font-size:.9rem}
+.btn{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px 18px;font-weight:600;font-size:.88rem}
+.btn:hover{filter:brightness(1.12)}
+.btn:disabled{opacity:.5;cursor:not-allowed;filter:none}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--txt)}
+.btn.danger{border-color:var(--red);color:var(--red)}
+.btn.small{padding:6px 10px;font-size:.78rem}
+.spacer{flex:1}
+.project-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px}
+.project-card{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:20px;cursor:pointer;transition:transform .12s,border-color .12s;display:flex;flex-direction:column;gap:10px}
+.project-card:hover{border-color:var(--accent);transform:translateY(-2px)}
+.project-card h3{margin:0;font-size:1.05rem}
+.project-card p{margin:0;color:var(--txt-dim);font-size:.82rem;min-height:34px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.progress-track{background:var(--bg3);border-radius:6px;height:8px;overflow:hidden}
+.progress-fill{background:var(--green);height:100%}
+.card-stats{display:flex;justify-content:space-between;color:var(--txt-dim);font-size:.76rem}
+.empty-hint{color:var(--txt-dim);padding:60px 20px;text-align:center;font-size:.95rem}
+.spinner-hint{color:var(--txt-dim);padding:30px;text-align:center}
+
+/* ---------- ACCESS GATE ---------- */
+.gate-overlay{position:fixed;inset:0;background:rgba(5,7,20,.75);display:flex;align-items:center;justify-content:center;z-index:50}
+.gate-box{background:var(--bg2);border:1px solid var(--line);border-radius:14px;padding:28px;width:380px;max-width:92vw}
+.gate-box h2{margin:0 0 4px}
+.gate-box p.hint{color:var(--txt-dim);font-size:.82rem;margin-top:0}
+.gate-box label{display:block;margin:14px 0 6px;font-size:.82rem;color:var(--txt-dim)}
+.gate-box select,.gate-box input{width:100%;background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:10px}
+.gate-error{color:var(--red);font-size:.82rem;margin-top:10px;min-height:1em}
+.pwd-wrap{position:relative}
+.pwd-wrap input{padding-right:36px}
+.pwd-eye{position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;font-size:1rem;padding:4px 6px;opacity:.7}
+.pwd-eye:hover{opacity:1}
+.doc-link{color:var(--accent);text-decoration:none;font-size:.78rem;background:var(--bg3);border:1px solid var(--line);border-radius:6px;padding:4px 8px;white-space:nowrap}
+.doc-link:hover{border-color:var(--accent)}
+.role-pill{display:inline-block;font-size:.7rem;padding:2px 8px;border-radius:10px;background:var(--bg3);color:var(--txt-dim);margin-left:8px}
+.role-pill.admin{background:#3d2a00;color:var(--yellow)}
+
+/* ---------- PROJECT SCREEN ---------- */
+#projectScreen header.top{display:flex;align-items:center;gap:14px;padding:14px 22px;background:var(--bg2);border-bottom:1px solid var(--line);flex-wrap:wrap}
+#projectScreen header.top h1{font-size:1.05rem;margin:0;font-weight:700}
+.proj-select{background:var(--bg3);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:8px 10px}
+nav.tabs{display:flex;gap:4px;padding:0 22px;background:var(--bg2);border-bottom:1px solid var(--line);overflow-x:auto}
+nav.tabs button{background:none;border:none;color:var(--txt-dim);padding:12px 16px;border-bottom:2px solid transparent;font-weight:600;white-space:nowrap}
+nav.tabs button.active{color:#fff;border-color:var(--accent)}
+main.project-main{padding:20px 22px 60px}
+.toolbar{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+.toolbar input[type=text]{background:var(--bg2);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:8px 10px;min-width:180px}
+.table-scroll{border-radius:8px}
+table.board{width:100%;table-layout:fixed;border-collapse:collapse;background:var(--bg2)}
+table.board th{background:var(--bg3);color:var(--txt-dim);text-align:left;padding:8px 6px;font-size:.7rem;text-transform:uppercase;letter-spacing:.02em;white-space:normal;overflow-wrap:break-word}
+table.board td{padding:6px;border-bottom:1px solid var(--line);vertical-align:middle;font-size:.78rem;overflow-wrap:break-word;word-break:break-word}
+/* Ancho por columna para que la tabla nunca necesite scroll horizontal */
+table.board th:nth-child(1){width:19%}
+table.board th:nth-child(2){width:8%}
+table.board th:nth-child(3){width:9%}
+table.board th:nth-child(4){width:8%}
+table.board th:nth-child(5){width:8%}
+table.board th:nth-child(6){width:11%}
+table.board th:nth-child(7){width:9%}
+table.board th:nth-child(8){width:11%}
+table.board th:nth-child(9){width:8%}
+table.board th:nth-child(10){width:9%}
+table.board input,table.board select{max-width:100%}
+.doc-link.icon-only{padding:2px;display:inline-flex;align-items:center;justify-content:center;border-radius:4px}
+tr.group-row td{background:var(--bg3);font-weight:700;padding:8px;cursor:pointer}
+tr.group-row.completado td{color:var(--green)}
+tr.task-row:hover{background:#1a2350}
+tr.add-row td{color:var(--txt-dim);cursor:pointer;font-style:italic}
+tr.add-row:hover td{color:var(--txt)}
+.task-name{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.chev{cursor:pointer;width:16px;text-align:center;color:var(--txt-dim);user-select:none}
+.chev.leaf{visibility:hidden}
+.task-title{cursor:text;outline:none;border-bottom:1px dashed transparent}
+.task-title:focus{border-color:var(--accent)}
+.badge{display:inline-block;padding:4px 10px;border-radius:4px;color:#0e1330;font-weight:700;font-size:.76rem;min-width:92px;text-align:center}
+select.tag-select{border:none;border-radius:4px;padding:5px 8px;font-weight:700;color:#0e1330;cursor:pointer}
+.estado-No-iniciado{background:#7f8bb3}
+.estado-En-progreso{background:#ffcb47}
+.estado-En-revisión{background:#a25ddc;color:#fff}
+.estado-Hecho{background:#00c875}
+.prio-Baja{background:#7f8bb3}
+.prio-Media{background:#ffcb47}
+.prio-Alta{background:#ff5ac4}
+input[type=date]{background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:4px;padding:4px 6px;font-size:.78rem}
+input.resp-input{background:transparent;border:none;color:var(--txt);width:100%}
+input.resp-input:focus{background:var(--bg3)}
+.files-cell{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.file-chip{background:var(--bg3);border:1px solid var(--line);border-radius:12px;padding:2px 8px;font-size:.72rem;display:flex;align-items:center;gap:4px}
+.file-chip a{text-decoration:none;color:var(--txt)}
+.file-chip button{background:none;border:none;color:var(--red);cursor:pointer;font-size:.8rem;padding:0}
+.add-file{background:var(--bg3);border:1px dashed var(--line);color:var(--txt-dim);border-radius:50%;width:22px;height:22px;flex-shrink:0}
+.add-file[disabled]{opacity:.35;cursor:not-allowed}
+.depth-indent{display:inline-block}
+.sprint-pill{background:var(--bg3);border:1px solid var(--line);border-radius:6px;padding:4px 6px;color:var(--txt);font-size:.76rem}
+.cronograma-cell{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.cronograma-cell input[type=date]{width:100%;min-width:0}
+.kanban-cols{display:flex;flex-wrap:wrap;gap:14px}
+.kcol{background:var(--bg2);border-radius:8px;min-width:200px;flex:1 1 200px;padding:10px}
+.kcol h3{margin:0 0 10px;font-size:.85rem;display:flex;justify-content:space-between}
+.kcard{background:var(--bg3);border:1px solid var(--line);border-radius:6px;padding:8px;margin-bottom:8px;cursor:grab}
+.kcard .brc{color:var(--txt-dim);font-size:.7rem;margin-bottom:4px}
+.kcard.dragging{opacity:.4}
+.kcol.dragover{outline:2px dashed var(--accent)}
+.sprint-panel{display:grid;grid-template-columns:280px 1fr;gap:16px}
+.sprint-list .sprint-item{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:8px;cursor:pointer}
+.sprint-item.active{border-color:var(--accent)}
+.sprint-item small{color:var(--txt-dim)}
+.empty-hint2{color:var(--txt-dim);padding:30px;text-align:center}
+dialog{background:var(--bg2);color:var(--txt);border:1px solid var(--line);border-radius:10px;padding:20px;width:420px;max-width:92vw}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+dialog label{display:block;margin:10px 0 4px;font-size:.8rem;color:var(--txt-dim)}
+dialog input,dialog textarea,dialog select{width:100%;background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:8px;font-family:inherit}
+dialog .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+dialog .err{color:var(--red);font-size:.8rem;min-height:1em;margin-top:8px}
+.count-pill{background:var(--bg);border-radius:10px;padding:1px 8px;font-size:.72rem;color:var(--txt-dim);margin-left:6px}
+
+/* Participantes builder (dentro del diálogo de nuevo proyecto) */
+.part-row{display:grid;grid-template-columns:1fr 110px 30px;gap:6px;margin-bottom:6px;align-items:center}
+.part-row select{padding:6px}
+.part-row button{background:none;border:none;color:var(--red);font-size:1rem}
+.part-list-view{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.part-chip{background:var(--bg3);border:1px solid var(--line);border-radius:12px;padding:3px 10px;font-size:.76rem;display:flex;align-items:center;gap:6px}
+
+/* Resumen tab */
+.resumen-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;max-width:1100px}
+.resumen-card{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:18px}
+.resumen-card h3{margin:0 0 10px;font-size:.95rem;color:var(--accent)}
+.resumen-card textarea{width:100%;min-height:140px;background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:10px;font-family:inherit;font-size:.88rem;resize:vertical}
+.resumen-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;max-width:1100px}
+.stat-box{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:14px;text-align:center}
+.stat-box .num{font-size:1.6rem;font-weight:800}
+.stat-box .lbl{color:var(--txt-dim);font-size:.76rem}
+.participantes-card{background:var(--bg2);border:1px solid var(--line);border-radius:10px;padding:18px;max-width:1100px;margin-top:18px}
+.participantes-card h3{margin:0 0 10px;font-size:.95rem;color:var(--accent)}
+
+/* Gantt */
+.gantt-wrap{overflow-x:auto;background:var(--bg2);border-radius:8px;padding:10px}
+.gantt-row{display:flex;align-items:center;height:30px;border-bottom:1px solid var(--line)}
+.gantt-label{width:260px;flex-shrink:0;font-size:.78rem;padding-right:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gantt-track{position:relative;height:20px;background:var(--bg3);border-radius:4px;flex-shrink:0}
+.gantt-bar{position:absolute;top:0;height:100%;border-radius:4px;min-width:6px}
+.gantt-header{display:flex;margin-bottom:6px}
+.gantt-header .gantt-label{font-weight:700;color:var(--txt-dim)}
+
+/* Reportes / print */
+.reportes-grid{display:flex;gap:14px;margin-bottom:20px;flex-wrap:wrap}
+#printArea{display:none}
+@media print{
+  body *{visibility:hidden}
+  #printArea, #printArea *{visibility:visible}
+  #printArea{display:block;position:absolute;top:0;left:0;width:100%;color:#000;background:#fff}
+  #printArea table{width:100%;border-collapse:collapse}
+  #printArea th,#printArea td{border:1px solid #999;padding:6px;font-size:11px;color:#000}
+}
+</style>
+</head>
+<body>
+
+<div class="setup-banner" id="setupBanner" style="display:none">
+  ⚠️ Backend no configurado todavía. Despliega <code>Code.gs</code> como Web App en Apps Script y pega la URL en la constante <code>WEBAPP_URL</code> dentro de este archivo.
+</div>
+
+<!-- ================= HOME SCREEN ================= -->
+<div id="homeScreen">
+  <div class="home-header">
+    <div class="logo-badge" id="logoBadge">🏢</div>
+    <div class="home-title">
+      <h1>Gestión de Proyectos</h1>
+      <small>Panel general — selecciona un proyecto para trabajar en él</small>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn ghost small" id="btnChangeLogo">Cambiar logo</button>
+  </div>
+  <div class="home-main">
+    <div class="home-toolbar">
+      <button class="btn" id="btnNewProjectHome">+ Nuevo proyecto</button>
+      <input type="text" id="homeSearch" placeholder="Buscar proyecto...">
+      <button class="btn ghost small" id="btnRefreshHome">↻ Actualizar</button>
+    </div>
+    <div class="project-grid" id="projectGrid"><div class="spinner-hint">Cargando proyectos...</div></div>
+  </div>
+</div>
+
+<!-- ================= ACCESS GATE (usuario/contraseña por proyecto) ================= -->
+<div class="gate-overlay" id="gateOverlay" style="display:none">
+  <div class="gate-box">
+    <h2 id="gateProjectName">Proyecto</h2>
+    <p class="hint">Selecciona tu usuario para entrar. Si tu usuario es Administrador, se te pedirá tu contraseña.</p>
+    <label>Tu usuario</label>
+    <select id="gateUsuario"></select>
+    <div id="gatePasswordWrap" style="display:none">
+      <label>Contraseña de administrador</label>
+      <div class="pwd-wrap"><input type="password" id="gatePassword"><button type="button" class="pwd-eye" data-toggle-pwd="gatePassword">👁</button></div>
+    </div>
+    <div class="gate-error" id="gateError"></div>
+    <div class="actions">
+      <button class="btn ghost" id="gateCancel">← Volver</button>
+      <button class="btn" id="gateSubmit">Entrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= PROJECT SCREEN ================= -->
+<div id="projectScreen" style="display:none">
+  <header class="top">
+    <button class="btn ghost small" id="btnBackHome">← Proyectos</button>
+    <h1 id="projTitle">Proyecto</h1>
+    <span id="sessionBadge" class="role-pill">—</span>
+    <button class="btn ghost small" id="btnSwitchUser">Cambiar de usuario</button>
+    <div class="spacer"></div>
+    <span id="driveStatus" style="font-size:.76rem;color:var(--txt-dim)"></span>
+  </header>
+
+  <nav class="tabs">
+    <button data-tab="resumen" class="active">Resumen</button>
+    <button data-tab="tabla">Tabla principal</button>
+    <button data-tab="kanban">Kanban</button>
+    <button data-tab="gantt">Gantt</button>
+    <button data-tab="sprints">Sprints / Backlog</button>
+    <button data-tab="reportes">Reportes</button>
+  </nav>
+
+  <main class="project-main">
+
+    <section id="tab-resumen">
+      <div class="resumen-stats" id="resumenStats"></div>
+      <div class="resumen-grid">
+        <div class="resumen-card">
+          <h3>🎯 Objetivo del proyecto</h3>
+          <textarea id="objetivoText" placeholder="¿Cuál es el objetivo de este proyecto?"></textarea>
+        </div>
+        <div class="resumen-card">
+          <h3>✅ Qué se espera / resultados</h3>
+          <textarea id="resultadosText" placeholder="¿Qué resultados o entregables se esperan al finalizar?"></textarea>
+        </div>
+      </div>
+      <div class="participantes-card">
+        <h3>👥 Participantes del proyecto</h3>
+        <div class="part-list-view" id="participantesView"></div>
+        <button class="btn ghost small" id="btnAddParticipant" style="margin-top:12px;display:none">+ Agregar participante</button>
+      </div>
+    </section>
+
+    <section id="tab-tabla" style="display:none">
+      <div class="toolbar">
+        <button class="btn" id="btnAddTask">+ Agregar tarea</button>
+        <input type="text" id="searchBox" placeholder="Buscar tarea...">
+        <select id="filterEstado" class="proj-select">
+          <option value="">Todos los estados</option>
+          <option>No iniciado</option><option>En progreso</option><option>En revisión</option><option>Hecho</option>
+        </select>
+        <select id="filterPrioridad" class="proj-select">
+          <option value="">Toda prioridad</option>
+          <option>Baja</option><option>Media</option><option>Alta</option>
+        </select>
+      </div>
+      <div class="table-scroll">
+        <table class="board">
+          <thead>
+            <tr>
+              <th style="width:24%">Tarea</th>
+              <th>Responsable</th>
+              <th>Estado</th>
+              <th>Vencimiento</th>
+              <th>Prioridad</th>
+              <th>Archivos</th>
+              <th>Notas</th>
+              <th>Cronograma</th>
+              <th>Sprint</th>
+              <th>Últ. actualización</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="tab-kanban" style="display:none">
+      <div class="kanban-cols" id="kanbanCols"></div>
+    </section>
+
+    <section id="tab-gantt" style="display:none">
+      <div class="toolbar">
+        <span style="color:var(--txt-dim);font-size:.82rem">El Gantt usa las fechas de la columna "Cronograma" de cada tarea (defínelas en la Tabla principal).</span>
+      </div>
+      <div class="gantt-wrap" id="ganttWrap"></div>
+    </section>
+
+    <section id="tab-sprints" style="display:none">
+      <div class="sprint-panel">
+        <div>
+          <button class="btn" id="btnNewSprint" style="width:100%;margin-bottom:10px">+ Nuevo sprint</button>
+          <div class="sprint-list" id="sprintList"></div>
+        </div>
+        <div id="sprintDetail"></div>
+      </div>
+    </section>
+
+    <section id="tab-reportes" style="display:none">
+      <div class="reportes-grid">
+        <button class="btn" id="btnExportExcel">📊 Exportar a Excel</button>
+        <button class="btn ghost" id="btnExportPDF">🧾 Generar reporte PDF</button>
+      </div>
+      <div class="resumen-stats" id="reportesStats"></div>
+      <div class="table-scroll">
+        <table class="board" id="reportesTable"></table>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- printable report (hidden, used only for window.print) -->
+<div id="printArea"></div>
+
+<!-- ================= DIALOGS ================= -->
+<dialog id="dlgTask">
+  <h3 id="dlgTaskTitle">Nueva tarea</h3>
+  <label>Título</label><input id="dlgTaskName">
+  <div class="actions">
+    <button class="btn ghost" data-close>Cancelar</button>
+    <button class="btn" id="dlgTaskSave">Guardar</button>
+  </div>
+</dialog>
+
+<dialog id="dlgProject" style="width:520px">
+  <h3>Nuevo proyecto</h3>
+  <label>Nombre del proyecto</label><input id="dlgProjectName" placeholder="Ej: Capacitación Institucional">
+  <label>Objetivo</label><textarea id="dlgProjectObjetivo" rows="2"></textarea>
+  <label>Qué se espera / resultados</label><textarea id="dlgProjectResultados" rows="2"></textarea>
+  <hr style="border-color:var(--line);margin:16px 0">
+  <label>Tu nombre (serás el Administrador de este proyecto)</label><input id="dlgProjectAdminName" placeholder="Ej: Dennys">
+  <label>Tu correo de Google (opcional)</label><input type="email" id="dlgProjectAdminEmail" placeholder="tucorreo@gmail.com">
+  <label>Contraseña de administrador para este proyecto</label>
+  <div class="pwd-wrap"><input type="password" id="dlgProjectAdminPass"><button type="button" class="pwd-eye" data-toggle-pwd="dlgProjectAdminPass">👁</button></div>
+  <hr style="border-color:var(--line);margin:16px 0">
+  <label>Participantes (responsables de actividades)</label>
+  <div id="participantesBuilder"></div>
+  <button class="btn ghost small" id="btnAddParticipantRow" type="button">+ Agregar participante</button>
+  <hr style="border-color:var(--line);margin:16px 0">
+  <label style="display:flex;align-items:center;gap:6px">
+    <svg width="18" height="16" viewBox="0 0 100 90" xmlns="http://www.w3.org/2000/svg"><polygon points="50,0 0,90 50,60" fill="#2684FC"/><polygon points="0,90 100,90 50,60" fill="#00AC47"/><polygon points="50,0 100,90 50,60" fill="#FFBA00"/></svg>
+    Enlace de la carpeta de Google Drive donde se guardará este proyecto
+  </label>
+  <input type="text" id="dlgProjectDriveLink" placeholder="https://drive.google.com/drive/folders/...">
+  <p style="font-size:.75rem;color:var(--txt-dim)">En la carpeta de ese enlace se creará una carpeta con el nombre de tu proyecto, y dentro las subcarpetas para guardar los archivos que suba cada participante.</p>
+  <div class="err" id="dlgProjectErr"></div>
+  <div class="actions">
+    <button class="btn ghost" data-close>Cancelar</button>
+    <button class="btn" id="dlgProjectSave">Crear proyecto</button>
+  </div>
+</dialog>
+
+<dialog id="dlgParticipant">
+  <h3>Agregar participante</h3>
+  <label>Nombre</label><input id="dlgPartName">
+  <label>Correo de Google (opcional)</label><input type="email" id="dlgPartEmail" placeholder="correo@gmail.com">
+  <label>Rol</label>
+  <select id="dlgPartRol"><option value="participante">Participante</option><option value="admin">Administrador</option></select>
+  <div id="dlgPartPassWrap" style="display:none">
+    <label>Nueva contraseña de administrador (para esta persona)</label>
+    <div class="pwd-wrap"><input type="password" id="dlgPartPass"><button type="button" class="pwd-eye" data-toggle-pwd="dlgPartPass">👁</button></div>
+  </div>
+  <div class="err" id="dlgPartErr"></div>
+  <div class="actions">
+    <button class="btn ghost" data-close>Cancelar</button>
+    <button class="btn" id="dlgPartSave">Agregar</button>
+  </div>
+</dialog>
+
+<dialog id="dlgSprint">
+  <h3>Nuevo sprint</h3>
+  <label>Nombre</label><input id="dlgSprintName" placeholder="Sprint 1">
+  <label>Fecha inicio</label><input type="date" id="dlgSprintStart">
+  <label>Fecha fin</label><input type="date" id="dlgSprintEnd">
+  <label>Meta del sprint</label><textarea id="dlgSprintGoal" rows="2"></textarea>
+  <div class="actions">
+    <button class="btn ghost" data-close>Cancelar</button>
+    <button class="btn" id="dlgSprintSave">Guardar</button>
+  </div>
+</dialog>
+
+<dialog id="dlgNotes">
+  <h3>Notas</h3>
+  <textarea id="dlgNotesText" rows="6"></textarea>
+  <div class="actions">
+    <button class="btn ghost" data-close>Cancelar</button>
+    <button class="btn" id="dlgNotesSave">Guardar</button>
+  </div>
+</dialog>
+
+<dialog id="dlgLinks" style="width:460px">
+  <h3>Documentos / enlaces en línea</h3>
+  <div id="linksListView" style="margin-bottom:10px"></div>
+
+  <label>Agregar un enlace ya existente</label>
+  <input type="text" id="dlgNewLinkUrl" placeholder="https://...">
+  <button class="btn ghost small" id="btnAddExistingLink" style="margin-top:8px">+ Agregar enlace</button>
+
+  <hr style="border-color:var(--line);margin:16px 0">
+  <label>O crear un documento nuevo en línea</label>
+  <input type="text" id="dlgNewDocName" placeholder="Nombre del documento">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+    <button class="btn ghost small" data-create-online="doc">📝 Word (Doc)</button>
+    <button class="btn ghost small" data-create-online="sheet">📊 Excel (Sheet)</button>
+    <button class="btn ghost small" data-create-online="slide">📽️ PowerPoint (Slide)</button>
+  </div>
+  <p style="font-size:.72rem;color:var(--txt-dim);margin-top:6px">Se crean como Google Docs / Sheets / Slides — equivalentes en línea a Word/Excel/PowerPoint, editables al instante (no son archivos .docx/.xlsx/.pptx). Se guardan dentro de la carpeta de este proyecto.</p>
+
+  <div class="err" id="dlgLinksErr"></div>
+  <div class="actions">
+    <button class="btn ghost" data-close>Cerrar</button>
+  </div>
+</dialog>
+
+<input type="file" id="hiddenFileInput" style="display:none" multiple>
+<input type="file" id="hiddenLogoInput" accept="image/*" style="display:none">
+
+<script>
+/* ===========================================================
+   Gestión de Proyectos — frontend conectado a Apps Script.
+   Backend real: Code.gs (Google Sheets + Drive por proyecto).
+   =========================================================== */
+
+// ⚠️ Reemplaza esto con la URL de tu Web App tras desplegar Code.gs
+// (Implementar → Nueva implementación → Aplicación web → Acceso: Cualquier usuario)
+const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbypelNijDrilEV11L4TtbVfXv3Sxch_sowEU91eALqKgk41CaMFDL5NcP-eL6CKJpW-/exec';
+
+const ESTADOS = ['No iniciado','En progreso','En revisión','Hecho'];
+const PRIORIDADES = ['Baja','Media','Alta'];
+const ESTADO_COLOR = {'No iniciado':'#7f8bb3','En progreso':'#ffcb47','En revisión':'#a25ddc','Hecho':'#00c875'};
+
+// "Logos" por tipo de documento (insignias de color, no los logos oficiales
+// exactos) para identificar de un vistazo Word/Excel/PowerPoint/enlace sin
+// ocupar espacio con el nombre completo.
+function svgBadge(bg, letter){
+  return `<svg width="16" height="16" viewBox="0 0 24 24" style="vertical-align:-3px;flex-shrink:0"><rect width="24" height="24" rx="5" fill="${bg}"/><text x="12" y="17" font-size="13" font-family="Arial,sans-serif" font-weight="bold" fill="#fff" text-anchor="middle">${letter}</text></svg>`;
+}
+const LINK_ICON_SVG = {
+  doc: svgBadge('#2B579A','W'),
+  sheet: svgBadge('#217346','X'),
+  slide: svgBadge('#D24726','P'),
+  enlace: `<svg width="16" height="16" viewBox="0 0 24 24" style="vertical-align:-3px;flex-shrink:0"><rect width="24" height="24" rx="5" fill="#5b7cff"/><path d="M9 12a3 3 0 013-3h1M15 12a3 3 0 01-3 3h-1" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`
+};
+
+if(!WEBAPP_URL || WEBAPP_URL.indexOf('PEGA_AQUI') === 0){
+  document.getElementById('setupBanner').style.display = 'block';
+}
+
+// ---------- API helpers ----------
+async function apiGet(action, params){
+  const qs = new URLSearchParams({ action, ...(params||{}) });
+  const res = await fetch(`${WEBAPP_URL}?${qs.toString()}`);
+  return res.json();
+}
+async function apiPost(action, payload){
+  const res = await fetch(WEBAPP_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // evita preflight CORS
+    body: JSON.stringify({ action, ...(payload||{}) })
+  });
+  return res.json();
+}
+
+function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,10); }
+function today(){ return new Date().toISOString().slice(0,10); }
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fileToBase64(file){
+  return new Promise((resolve,reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=> resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// Ojito para mostrar/ocultar cualquier campo de contraseña marcado con data-toggle-pwd.
+document.addEventListener('click', (e)=>{
+  const btn = e.target.closest('[data-toggle-pwd]');
+  if(!btn) return;
+  const input = document.getElementById(btn.dataset.togglePwd);
+  input.type = input.type === 'password' ? 'text' : 'password';
+  btn.textContent = input.type === 'password' ? '👁' : '🙈';
+});
+
+// Registro de accesos: cada vez que alguien abre un documento en línea, se
+// guarda su nombre de la app (no requiere cuenta de Google) para poder
+// auditar quién lo abrió y cuándo. No bloquea la apertura del enlace.
+document.addEventListener('click', (e)=>{
+  const link = e.target.closest('[data-log-doc]');
+  if(!link || !session || !activeProjectId) return;
+  const parts = link.dataset.logDoc.split(':');
+  const taskId = parts[0], linkId = parts[1], nombre = parts.slice(2).join(':');
+  apiPost('logDocAccess', { projectId: activeProjectId, taskId, linkId, documento: nombre, usuario: session.usuario, rol: session.rol }).catch(()=>{});
+});
+
+// Inactividad: después de 1 hora sin clics ni teclas en cualquier pestaña/
+// proyecto, se regresa a Proyectos para que se vuelva a entrar desde ahí.
+// Es también el mecanismo real que cierra la sesión con el tiempo (ver nota
+// sobre localStorage más abajo: "cerrar la app" no se puede distinguir de
+// forma confiable de "actualizar" en todos los navegadores).
+const ONE_HOUR_MS = 60 * 60 * 1000;
+const LAST_ACTIVITY_KEY = 'gp_last_activity';
+function touchActivity(){ localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now())); }
+function getIdleMs(){
+  const last = Number(localStorage.getItem(LAST_ACTIVITY_KEY));
+  return last ? (Date.now() - last) : 0;
+}
+document.addEventListener('click', touchActivity);
+document.addEventListener('keydown', touchActivity);
+setInterval(()=>{
+  if(screen==='project' && getIdleMs() > ONE_HOUR_MS) forceReturnHome();
+}, 60000); // revisa cada minuto
+
+// ---------- app state ----------
+let homeProjects = [];
+let screen = 'home'; // 'home' | 'project'
+let activeProjectId = null;
+let projectData = null; // { proyecto, usuarios, tareas, sprints }
+let session = null; // { usuario, rol, password? }
+let activeTab = 'resumen';
+let dragTaskId = null;
+
+function sessionKey(pid){ return 'sess_' + pid; }
+// localStorage: es lo único que sobrevive de forma confiable a F5/Ctrl+F5/
+// botón de actualizar en cualquier navegador (sessionStorage no es fiable
+// para esto en algunos navegadores/lectores de archivos locales — cada
+// "actualizar" se comporta ahí como si abrieran una pestaña nueva, y eso
+// causaba que se volviera a pedir el usuario). El cierre de sesión real
+// pasa por el botón "← Proyectos" o por 1 hora de inactividad, no por
+// intentar detectar un "cierre" del navegador (no existe una forma
+// confiable de distinguir eso de una actualización normal).
+function loadSession(pid){ try { return JSON.parse(localStorage.getItem(sessionKey(pid))); } catch(e){ return null; } }
+function saveSession(pid, s){ localStorage.setItem(sessionKey(pid), JSON.stringify(s)); }
+function clearSession(pid){ localStorage.removeItem(sessionKey(pid)); }
+
+// Recuerda en qué pantalla/proyecto/pestaña estabas para que actualizar
+// la página (F5, Ctrl+F5 o el botón del navegador) te deje donde mismo,
+// con los datos frescos, sin pedir usuario ni mandarte a otra página.
+const APP_STATE_KEY = 'gp_app_state';
+function persistAppState(){
+  localStorage.setItem(APP_STATE_KEY, JSON.stringify({ screen, activeProjectId, activeTab }));
+  if(screen==='project' && activeProjectId){
+    history.replaceState(null, '', '#p=' + encodeURIComponent(activeProjectId) + '&t=' + encodeURIComponent(activeTab));
+  } else {
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+}
+function loadAppState(){
+  try { return JSON.parse(localStorage.getItem(APP_STATE_KEY)); } catch(e){ return null; }
+}
+function parseHashState(){
+  const m = location.hash.match(/^#p=([^&]+)&t=([^&]*)$/);
+  if(!m) return null;
+  return { projectId: decodeURIComponent(m[1]), tab: decodeURIComponent(m[2] || 'resumen') };
+}
+let isBusyEntering = false;
+
+function isAdmin(){ return session && session.rol === 'admin'; }
+function canUploadTo(tarea){
+  if(!session) return false;
+  if(session.rol === 'admin') return true;
+  return (tarea.responsable||'').trim().toLowerCase() === session.usuario.trim().toLowerCase();
+}
+
+// ---------- recursive helpers ----------
+function findTarea(list, id){ for(const t of list){ if(t.id===id) return t; const f=findTarea(t.hijos,id); if(f) return f; } return null; }
+function removeTareaLocal(list, id){ const idx=list.findIndex(t=>t.id===id); if(idx>-1){ list.splice(idx,1); return true; } for(const t of list){ if(removeTareaLocal(t.hijos,id)) return true; } return false; }
+function flattenVisible(list, depth){ let out=[]; for(const t of list){ out.push({t,depth}); if(t.hijos.length && t.expandido) out=out.concat(flattenVisible(t.hijos,depth+1)); } return out; }
+function flattenAllIgnoreCollapse(list, parents){ parents=parents||[]; let out=[]; for(const t of list){ out.push({t,parents}); out=out.concat(flattenAllIgnoreCollapse(t.hijos,parents.concat([t.titulo]))); } return out; }
+function countAll(list){ let n=0; for(const t of list){ n+=1+countAll(t.hijos); } return n; }
+function countByEstado(list, estado){ let n=0; for(const t of list){ if(t.estado===estado) n++; n+=countByEstado(t.hijos,estado); } return n; }
+
+// =====================================================================
+// HOME SCREEN
+// =====================================================================
+async function loadHome(){
+  document.getElementById('projectGrid').innerHTML = '<div class="spinner-hint">Cargando proyectos...</div>';
+  try{
+    const r = await apiGet('listProjects');
+    homeProjects = r.ok ? r.proyectos : [];
+    if(!r.ok) document.getElementById('projectGrid').innerHTML = `<div class="empty-hint">Error: no se pudo conectar con el backend.</div>`;
+    else renderHome();
+  } catch(err){
+    document.getElementById('projectGrid').innerHTML = `<div class="empty-hint">Error: no se pudo conectar con el backend.</div>`;
+  }
+}
+function renderHome(){
+  const grid = document.getElementById('projectGrid');
+  const q = document.getElementById('homeSearch').value.trim().toLowerCase();
+  const list = homeProjects.filter(p=>!q || p.nombre.toLowerCase().includes(q));
+  if(list.length===0){ grid.innerHTML = '<div class="empty-hint">No hay proyectos todavía. Crea el primero con "+ Nuevo proyecto".</div>'; return; }
+  grid.innerHTML = list.map(p=>{
+    const pct = p.total ? Math.round(p.hechas/p.total*100) : 0;
+    return `
+    <div class="project-card" data-open="${p.id}">
+      <h3>${escapeHtml(p.nombre)}</h3>
+      <p>${escapeHtml(p.objetivo || 'Sin objetivo definido todavía.')}</p>
+      <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
+      <div class="card-stats"><span>${p.hechas}/${p.total} tareas</span><span>${pct}% completado</span></div>
+    </div>`;
+  }).join('');
+  grid.querySelectorAll('[data-open]').forEach(el=>{
+    el.addEventListener('click', ()=> openProject(el.dataset.open));
+  });
+}
+document.getElementById('homeSearch').addEventListener('input', renderHome);
+document.getElementById('btnRefreshHome').onclick = loadHome;
+
+document.getElementById('btnChangeLogo').onclick = ()=> document.getElementById('hiddenLogoInput').click();
+document.getElementById('hiddenLogoInput').addEventListener('change', (e)=>{
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{ document.getElementById('logoBadge').innerHTML = `<img src="${reader.result}" style="width:100%;height:100%;object-fit:contain">`; localStorage.setItem('gp_logo', reader.result); };
+  reader.readAsDataURL(file);
+});
+(function restoreLogo(){ const saved = localStorage.getItem('gp_logo'); if(saved) document.getElementById('logoBadge').innerHTML = `<img src="${saved}" style="width:100%;height:100%;object-fit:contain">`; })();
+
+// ---------- nuevo proyecto: builder de participantes ----------
+let participantesDraft = [];
+function renderParticipantesBuilder(){
+  const box = document.getElementById('participantesBuilder');
+  box.innerHTML = participantesDraft.map((p,i)=>`
+    <div class="part-row" style="grid-template-columns:1fr 1fr 100px 30px">
+      <input type="text" value="${escapeHtml(p.nombre)}" data-pidx="${i}" data-pfield="nombre" placeholder="Nombre">
+      <input type="email" value="${escapeHtml(p.email||'')}" data-pidx="${i}" data-pfield="email" placeholder="Correo de Google">
+      <select data-pidx="${i}" data-pfield="rol">
+        <option value="participante" ${p.rol==='participante'?'selected':''}>Participante</option>
+        <option value="admin" ${p.rol==='admin'?'selected':''}>Admin</option>
+      </select>
+      <button type="button" data-premove="${i}">✕</button>
+    </div>`).join('');
+  box.querySelectorAll('[data-pfield]').forEach(el=>{
+    el.addEventListener('input', ()=>{ participantesDraft[+el.dataset.pidx][el.dataset.pfield] = el.value; });
+    el.addEventListener('change', ()=>{ participantesDraft[+el.dataset.pidx][el.dataset.pfield] = el.value; });
+  });
+  box.querySelectorAll('[data-premove]').forEach(el=>{
+    el.addEventListener('click', ()=>{ participantesDraft.splice(+el.dataset.premove,1); renderParticipantesBuilder(); });
+  });
+}
+document.getElementById('btnAddParticipantRow').onclick = ()=>{ participantesDraft.push({nombre:'',email:'',rol:'participante'}); renderParticipantesBuilder(); };
+
+document.getElementById('btnNewProjectHome').onclick = ()=>{
+  document.getElementById('dlgProjectName').value = '';
+  document.getElementById('dlgProjectObjetivo').value = '';
+  document.getElementById('dlgProjectResultados').value = '';
+  document.getElementById('dlgProjectAdminName').value = '';
+  document.getElementById('dlgProjectAdminEmail').value = '';
+  document.getElementById('dlgProjectAdminPass').value = '';
+  document.getElementById('dlgProjectDriveLink').value = '';
+  document.getElementById('dlgProjectErr').textContent = '';
+  participantesDraft = [];
+  renderParticipantesBuilder();
+  document.getElementById('dlgProject').showModal();
+};
+function extraerIdCarpetaDrive(url){
+  const m = String(url||'').match(/[-\w]{25,}/);
+  return m ? m[0] : '';
+}
+document.getElementById('dlgProjectSave').onclick = async ()=>{
+  const nombre = document.getElementById('dlgProjectName').value.trim();
+  const objetivo = document.getElementById('dlgProjectObjetivo').value.trim();
+  const resultados = document.getElementById('dlgProjectResultados').value.trim();
+  const adminNombre = document.getElementById('dlgProjectAdminName').value.trim();
+  const adminEmail = document.getElementById('dlgProjectAdminEmail').value.trim();
+  const adminPassword = document.getElementById('dlgProjectAdminPass').value;
+  const driveLink = document.getElementById('dlgProjectDriveLink').value.trim();
+  const errEl = document.getElementById('dlgProjectErr');
+
+  if(!nombre || !objetivo || !resultados || !adminNombre || !adminPassword || !driveLink){
+    errEl.textContent = 'Completa todos los campos: nombre, objetivo, resultados, administrador, contraseña y el enlace de Drive.';
+    return;
+  }
+  if(participantesDraft.some(p=>!p.nombre.trim())){
+    errEl.textContent = 'Hay un participante sin nombre. Complétalo o quítalo con la ✕.';
+    return;
+  }
+  const rootFolderId = extraerIdCarpetaDrive(driveLink);
+  if(!rootFolderId){
+    errEl.textContent = 'El enlace de Drive no parece válido. Debe ser un link de carpeta de Google Drive (drive.google.com/drive/folders/...).';
+    return;
+  }
+
+  const btn = document.getElementById('dlgProjectSave'); btn.disabled = true; btn.textContent = 'Creando...';
+  try{
+    const r = await apiPost('createProject', {
+      nombre, objetivo, resultados, adminNombre, adminEmail, adminPassword, rootFolderId,
+      participantes: participantesDraft.filter(p=>p.nombre.trim())
+    });
+    if(!r.ok){ errEl.textContent = 'Error: ' + (r.error || 'no se pudo crear el proyecto.'); return; }
+    document.getElementById('dlgProject').close();
+    await loadHome();
+  } catch(err){ errEl.textContent = 'Error: no se pudo conectar con el backend.'; }
+  finally { btn.disabled = false; btn.textContent = 'Crear proyecto'; }
+};
+
+document.querySelectorAll('dialog [data-close]').forEach(b=> b.onclick = ()=> b.closest('dialog').close());
+
+// =====================================================================
+// ACCESS GATE
+// =====================================================================
+async function openProject(projectId){
+  if(isBusyEntering) return; // ignora clics repetidos mientras ya se está entrando a un proyecto
+  activeProjectId = projectId;
+  // Siempre se pide usuario/rol al entrar desde la pantalla de Proyectos,
+  // aunque ya hubiera una sesión guardada de una visita anterior.
+  await showGate(projectId);
+}
+async function showGate(projectId){
+  document.getElementById('gateError').textContent = '';
+  document.getElementById('gatePassword').value = '';
+  document.getElementById('gatePasswordWrap').style.display = 'none';
+  document.getElementById('gateOverlay').style.display = 'flex';
+  projectData = null; // se cargará completo recién tras el login
+
+  // Instantáneo: usa los usuarios que ya vinieron con el listado de proyectos,
+  // sin esperar una llamada nueva al backend.
+  const cached = homeProjects.find(p=>p.id===projectId);
+  if(cached){
+    document.getElementById('gateProjectName').textContent = cached.nombre;
+    const sel = document.getElementById('gateUsuario');
+    sel.innerHTML = (cached.usuarios||[]).map(u=>`<option value="${escapeHtml(u.nombre)}" data-rol="${u.rol}">${escapeHtml(u.nombre)} ${u.rol==='admin'?'(Admin)':''}</option>`).join('');
+    toggleGatePassword();
+    return;
+  }
+
+  // Respaldo si por algún motivo no estaba en caché (ej. enlace directo)
+  document.getElementById('gateProjectName').textContent = 'Cargando...';
+  let r;
+  try{ r = await apiGet('getProjectData', { projectId }); }
+  catch(err){ document.getElementById('gateError').textContent = 'Error: no se pudo conectar con el backend.'; return; }
+  if(!r.ok){ document.getElementById('gateError').textContent = 'Error: no se pudo cargar el proyecto.'; return; }
+  document.getElementById('gateProjectName').textContent = r.proyecto.nombre;
+  const sel = document.getElementById('gateUsuario');
+  sel.innerHTML = r.usuarios.map(u=>`<option value="${escapeHtml(u.nombre)}" data-rol="${u.rol}">${escapeHtml(u.nombre)} ${u.rol==='admin'?'(Admin)':''}</option>`).join('');
+  toggleGatePassword();
+}
+function toggleGatePassword(){
+  const sel = document.getElementById('gateUsuario');
+  const opt = sel.selectedOptions[0];
+  document.getElementById('gatePasswordWrap').style.display = (opt && opt.dataset.rol==='admin') ? 'block' : 'none';
+}
+document.getElementById('gateUsuario').addEventListener('change', toggleGatePassword);
+document.getElementById('gateCancel').onclick = ()=>{ document.getElementById('gateOverlay').style.display='none'; activeProjectId=null; };
+document.getElementById('gatePassword').addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); document.getElementById('gateSubmit').click(); } });
+document.getElementById('gateUsuario').addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); document.getElementById('gateSubmit').click(); } });
+document.getElementById('gateSubmit').onclick = async ()=>{
+  const usuario = document.getElementById('gateUsuario').value;
+  const password = document.getElementById('gatePassword').value;
+  const errEl = document.getElementById('gateError');
+  const btn = document.getElementById('gateSubmit'); btn.disabled = true;
+  isBusyEntering = true; // bloquea clics a otras tarjetas de proyecto mientras se entra
+  try{
+    const r = await apiPost('login', { projectId: activeProjectId, usuario, password });
+    if(!r.ok){ errEl.textContent = 'Error: ' + (r.error || 'no se pudo iniciar sesión.'); return; }
+    session = { usuario: r.usuario, rol: r.rol, password: r.rol==='admin' ? password : undefined };
+    saveSession(activeProjectId, session);
+    document.getElementById('gateOverlay').style.display = 'none';
+    // Oculta Proyectos de inmediato (no solo tras cargar) para que no se
+    // pueda volver a hacer clic en una tarjeta mientras carga este proyecto.
+    document.getElementById('homeScreen').style.display = 'none';
+    document.getElementById('projectScreen').style.display = '';
+    await enterProject();
+  } catch(err){ errEl.textContent = 'Error: no se pudo conectar con el backend.'; }
+  finally { btn.disabled = false; isBusyEntering = false; }
+};
+
+document.getElementById('btnSwitchUser').onclick = ()=>{
+  clearSession(activeProjectId);
+  session = null;
+  showGate(activeProjectId);
+};
+
+// =====================================================================
+// PROJECT SCREEN
+// =====================================================================
+async function enterProject(preserveTab){
+  if(!projectData || projectData.proyecto.id !== activeProjectId){
+    let r;
+    try{ r = await apiGet('getProjectData', { projectId: activeProjectId }); }
+    catch(err){ alert('Error: no se pudo conectar con el backend.'); return; }
+    if(!r.ok){ alert('Error: no se pudo cargar el proyecto.'); return; }
+    projectData = r;
+  }
+  markExpandedDefaults(projectData.tareas);
+  screen = 'project';
+  activeTab = preserveTab || 'resumen';
+  document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab===activeTab));
+  ['resumen','tabla','kanban','gantt','sprints','reportes'].forEach(k=> document.getElementById('tab-'+k).style.display = (k===activeTab)?'':'none');
+  renderAll();
+  persistAppState();
+}
+function markExpandedDefaults(list){ list.forEach(t=>{ t.expandido = t.expandido || false; markExpandedDefaults(t.hijos); }); }
+
+async function refreshProjectData(){
+  const r = await apiGet('getProjectData', { projectId: activeProjectId });
+  if(r.ok){ markExpandedDefaults(r.tareas); r.tareas.forEach(syncExpanded); projectData = r; }
+  return r;
+}
+// conserva qué filas estaban expandidas tras un refetch
+function syncExpanded(){ /* placeholder: el árbol nuevo empieza colapsado; aceptable tras cada refresco */ }
+
+// Cierra la sesión del proyecto actual y regresa a Proyectos. Se usa tanto
+// al presionar "← Proyectos" como cuando expira por inactividad.
+function forceReturnHome(){
+  if(activeProjectId) clearSession(activeProjectId);
+  session = null;
+  screen = 'home';
+  activeProjectId = null;
+  persistAppState();
+  document.getElementById('gateOverlay').style.display = 'none';
+  document.getElementById('homeScreen').style.display = '';
+  document.getElementById('projectScreen').style.display = 'none';
+  renderHome(); // instantáneo con los datos ya cargados en memoria
+  loadHome();   // refresca en segundo plano por si algo cambió
+}
+document.getElementById('btnBackHome').onclick = forceReturnHome;
+
+document.querySelectorAll('nav.tabs button').forEach(btn=>{
+  btn.onclick = ()=>{
+    activeTab = btn.dataset.tab;
+    persistAppState();
+    document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    ['resumen','tabla','kanban','gantt','sprints','reportes'].forEach(k=>{
+      document.getElementById('tab-'+k).style.display = (k===activeTab) ? '' : 'none';
+    });
+    renderProjectScreen();
+  };
+});
+
+// ---------- Resumen tab ----------
+function renderResumen(){
+  const p = projectData.proyecto;
+  document.getElementById('objetivoText').value = p.objetivo || '';
+  document.getElementById('resultadosText').value = p.resultados || '';
+  const tareas = projectData.tareas;
+  const total = countAll(tareas), hechas = countByEstado(tareas,'Hecho'), enProgreso = countByEstado(tareas,'En progreso'), noIniciado = countByEstado(tareas,'No iniciado');
+  document.getElementById('resumenStats').innerHTML = `
+    <div class="stat-box"><div class="num">${total}</div><div class="lbl">Tareas totales</div></div>
+    <div class="stat-box"><div class="num" style="color:var(--green)">${hechas}</div><div class="lbl">Completadas</div></div>
+    <div class="stat-box"><div class="num" style="color:var(--yellow)">${enProgreso}</div><div class="lbl">En progreso</div></div>
+    <div class="stat-box"><div class="num" style="color:var(--gray)">${noIniciado}</div><div class="lbl">No iniciadas</div></div>`;
+  document.getElementById('participantesView').innerHTML = projectData.usuarios.map(u=>
+    `<span class="part-chip" title="${escapeHtml(u.email||'sin correo registrado')}">${escapeHtml(u.nombre)}${u.email?` <small style="color:var(--txt-dim)">(${escapeHtml(u.email)})</small>`:''}<span class="role-pill ${u.rol==='admin'?'admin':''}">${u.rol}</span></span>`).join('');
+  document.getElementById('btnAddParticipant').style.display = isAdmin() ? 'inline-block' : 'none';
+}
+document.getElementById('objetivoText').addEventListener('change', async (e)=>{
+  projectData.proyecto.objetivo = e.target.value;
+  await apiPost('saveConfig', { projectId: activeProjectId, objetivo: e.target.value, resultados: projectData.proyecto.resultados });
+});
+document.getElementById('resultadosText').addEventListener('change', async (e)=>{
+  projectData.proyecto.resultados = e.target.value;
+  await apiPost('saveConfig', { projectId: activeProjectId, objetivo: projectData.proyecto.objetivo, resultados: e.target.value });
+});
+document.getElementById('btnAddParticipant').onclick = ()=>{
+  document.getElementById('dlgPartName').value = '';
+  document.getElementById('dlgPartEmail').value = '';
+  document.getElementById('dlgPartRol').value = 'participante';
+  document.getElementById('dlgPartPass').value = '';
+  document.getElementById('dlgPartPassWrap').style.display = 'none';
+  document.getElementById('dlgPartErr').textContent = '';
+  document.getElementById('dlgParticipant').showModal();
+};
+document.getElementById('dlgPartRol').addEventListener('change', (e)=>{
+  document.getElementById('dlgPartPassWrap').style.display = e.target.value==='admin' ? 'block' : 'none';
+});
+document.getElementById('dlgPartSave').onclick = async ()=>{
+  const nombre = document.getElementById('dlgPartName').value.trim();
+  const email = document.getElementById('dlgPartEmail').value.trim();
+  const rol = document.getElementById('dlgPartRol').value;
+  const nuevoPassword = document.getElementById('dlgPartPass').value;
+  const errEl = document.getElementById('dlgPartErr');
+  if(!nombre){ errEl.textContent = 'El nombre es obligatorio.'; return; }
+  if(rol==='admin' && !nuevoPassword){ errEl.textContent = 'Define una contraseña para este nuevo administrador.'; return; }
+  try{
+    const r = await apiPost('addParticipant', { projectId: activeProjectId, adminUsuario: session.usuario, adminPassword: session.password, nombre, email, rol, nuevoPassword });
+    if(!r.ok){ errEl.textContent = 'Error: ' + (r.error || 'no se pudo agregar.'); return; }
+    document.getElementById('dlgParticipant').close();
+    await refreshProjectData();
+    renderProjectScreen();
+  } catch(err){ errEl.textContent = 'Error: no se pudo conectar con el backend.'; }
+};
+
+// ---------- Tabla principal ----------
+function renderTable(){
+  const tbody = document.getElementById('tableBody');
+  tbody.innerHTML = '';
+  const search = document.getElementById('searchBox').value.trim().toLowerCase();
+  const fEstado = document.getElementById('filterEstado').value;
+  const fPrio = document.getElementById('filterPrioridad').value;
+  const matches = (t) => {
+    if(search && !t.titulo.toLowerCase().includes(search)) return false;
+    if(fEstado && t.estado!==fEstado) return false;
+    if(fPrio && t.prioridad!==fPrio) return false;
+    return true;
+  };
+  const hasFilter = !!(search || fEstado || fPrio);
+  // La agrupación TAREAS/Completado se decide SOLO por el estado del módulo
+  // (tarea de nivel superior). Sus subtareas se muestran siempre junto a él,
+  // sin importar su propio estado individual — marcar una subtarea como
+  // "Hecho" solo deja su estado así, no la mueve de sección.
+  const roots = projectData.tareas;
+  const groups = [
+    {key:'activos', label:'TAREAS', cls:'', roots: roots.filter(t=>t.estado!=='Hecho')},
+    {key:'hechos', label:'Completado', cls:'completado', roots: roots.filter(t=>t.estado==='Hecho')}
+  ];
+  groups.forEach(g=>{
+    const flat = flattenVisible(g.roots, 0);
+    const rows = hasFilter ? flat.filter(row=>matches(row.t)) : flat;
+    const groupTr = document.createElement('tr');
+    groupTr.className = 'group-row ' + g.cls;
+    groupTr.innerHTML = `<td colspan="10">▼ ${g.label} <span class="count-pill">${g.roots.length}</span></td>`;
+    tbody.appendChild(groupTr);
+    if(rows.length===0){ const tr=document.createElement('tr'); tr.innerHTML=`<td colspan="10" class="empty-hint2">Sin tareas</td>`; tbody.appendChild(tr); }
+    rows.forEach(({t, depth})=> tbody.appendChild(renderTaskRow(t, depth)));
+    if(g.key==='activos'){
+      const addTr = document.createElement('tr'); addTr.className='add-row';
+      addTr.innerHTML = `<td colspan="10">+ Agregar tarea</td>`;
+      addTr.onclick = ()=> openTaskDialog(null);
+      tbody.appendChild(addTr);
+    }
+  });
+}
+
+function renderTaskRow(t, depth){
+  const tr = document.createElement('tr');
+  tr.className = 'task-row'; tr.draggable = true; tr.dataset.id = t.id;
+  tr.ondragstart = ()=>{ dragTaskId = t.id; };
+  const chev = t.hijos.length ? `<span class="chev" data-toggle="${t.id}">${t.expandido?'▾':'▸'}</span>` : `<span class="chev leaf">•</span>`;
+  const indent = `<span class="depth-indent" style="width:${depth*22}px"></span>`;
+  const filesHtml = (t.archivos||[]).map((f)=>`<span class="file-chip"><a href="${f.url}" target="_blank" rel="noopener">📎 ${escapeHtml(f.nombre)}</a>${(isAdmin()||f.subidoPor===session.usuario)?`<button data-file-del="${t.id}:${f.id}">✕</button>`:''}</span>`).join('');
+  const puedeSubir = canUploadTo(t);
+  const sprintOptions = projectData.sprints.map(s=>`<option value="${s.id}" ${t.sprintId===s.id?'selected':''}>${escapeHtml(s.nombre)}</option>`).join('');
+  let docLinkHtml = '';
+  if(depth===0){
+    // Solo el ícono (logo por tipo) en la tabla, para no ocupar espacio con
+    // nombres largos; el nombre completo queda como tooltip (title).
+    docLinkHtml += (t.enlaces||[]).map(l=>`<a class="doc-link icon-only" href="${escapeHtml(l.url)}" target="_blank" rel="noopener" title="${escapeHtml(l.nombre)}" data-log-doc="${t.id}:${l.id}:${escapeHtml(l.nombre)}">${LINK_ICON_SVG[l.tipo]||LINK_ICON_SVG.enlace}</a>`).join('');
+    if(isAdmin()) docLinkHtml += `<button class="btn ghost small" data-manage-links="${t.id}" title="Agregar o quitar enlaces/documentos">🔗+</button>`;
+  }
+  tr.innerHTML = `
+    <td><div class="task-name">${indent}${chev}
+      <span class="task-title" contenteditable="true" data-edit-title="${t.id}">${escapeHtml(t.titulo)}</span>
+      <button class="btn ghost small" data-add-sub="${t.id}" title="Agregar subtarea">+</button>
+      ${docLinkHtml}
+    </div></td>
+    <td><input class="resp-input" placeholder="—" value="${escapeHtml(t.responsable)}" data-field="responsable" data-id="${t.id}"></td>
+    <td><select class="tag-select estado-${t.estado.replace(/ /g,'-')}" data-field="estado" data-id="${t.id}">
+      ${ESTADOS.map(e=>`<option ${e===t.estado?'selected':''}>${e}</option>`).join('')}</select></td>
+    <td><input type="date" value="${t.vencimiento}" data-field="vencimiento" data-id="${t.id}"></td>
+    <td><select class="tag-select prio-${t.prioridad}" data-field="prioridad" data-id="${t.id}">
+      ${PRIORIDADES.map(p=>`<option ${p===t.prioridad?'selected':''}>${p}</option>`).join('')}</select></td>
+    <td><div class="files-cell">${filesHtml}<button class="add-file" data-add-file="${t.id}" ${puedeSubir?'':'disabled'} title="${puedeSubir?'Subir archivo':'Solo '+(t.responsable||'el responsable asignado')+' puede subir aquí'}">+</button></div></td>
+    <td><span class="task-title" data-open-notes="${t.id}" title="${escapeHtml(t.notas)}">${t.notas ? escapeHtml(t.notas.slice(0,20))+(t.notas.length>20?'…':'') : '+ Notas'}</span></td>
+    <td><div class="cronograma-cell"><input type="date" value="${t.cronogramaInicio}" data-field="cronogramaInicio" data-id="${t.id}"><input type="date" value="${t.cronogramaFin}" data-field="cronogramaFin" data-id="${t.id}"></div></td>
+    <td><select class="sprint-pill" data-field="sprintId" data-id="${t.id}"><option value="">Backlog</option>${sprintOptions}</select></td>
+    <td style="color:var(--txt-dim);font-size:.76rem">${t.actualizado}<br><button class="btn ghost small" data-del="${t.id}" style="margin-top:4px;color:var(--red);border-color:var(--red)">Eliminar</button></td>
+  `;
+  return tr;
+}
+
+document.getElementById('tableBody').addEventListener('click', async (e)=>{
+  const toggle = e.target.closest('[data-toggle]');
+  if(toggle){ findTarea(projectData.tareas, toggle.dataset.toggle).expandido ^= true; renderProjectScreen(); return; }
+  const addSub = e.target.closest('[data-add-sub]');
+  if(addSub){ openTaskDialog(addSub.dataset.addSub); return; }
+  const del = e.target.closest('[data-del]');
+  if(del){
+    if(confirm('¿Eliminar esta tarea y sus subtareas?')){
+      await apiPost('deleteTask', { projectId: activeProjectId, taskId: del.dataset.del });
+      removeTareaLocal(projectData.tareas, del.dataset.del);
+      renderProjectScreen();
+    }
+    return;
+  }
+  const addFile = e.target.closest('[data-add-file]');
+  if(addFile && !addFile.disabled){ pendingFileTaskId = addFile.dataset.addFile; document.getElementById('hiddenFileInput').click(); return; }
+  const fileDel = e.target.closest('[data-file-del]');
+  if(fileDel){
+    const [tid,fid] = fileDel.dataset.fileDel.split(':');
+    const r = await apiPost('deleteFile', { projectId: activeProjectId, usuario: session.usuario, archivoId: fid });
+    if(!r.ok){ alert('Error: ' + r.error); return; }
+    const t = findTarea(projectData.tareas, tid);
+    t.archivos = t.archivos.filter(f=>f.id!==fid);
+    renderProjectScreen();
+    return;
+  }
+  const notes = e.target.closest('[data-open-notes]');
+  if(notes){ openNotesDialog(notes.dataset.openNotes); return; }
+  const manageLinks = e.target.closest('[data-manage-links]');
+  if(manageLinks){ openLinksDialog(manageLinks.dataset.manageLinks); return; }
+});
+document.getElementById('tableBody').addEventListener('change', async (e)=>{
+  const f = e.target.closest('[data-field]');
+  if(f){
+    const t = findTarea(projectData.tareas, f.dataset.id);
+    t[f.dataset.field] = f.value; t.actualizado = today();
+    renderTable();
+    await apiPost('updateTask', { projectId: activeProjectId, taskId: t.id, patch: { [f.dataset.field]: f.value } });
+  }
+});
+document.getElementById('tableBody').addEventListener('blur', async (e)=>{
+  const title = e.target.closest('[data-edit-title]');
+  if(title){
+    const t = findTarea(projectData.tareas, title.dataset.editTitle);
+    const nuevo = title.textContent.trim()||t.titulo;
+    if(nuevo !== t.titulo){ t.titulo = nuevo; t.actualizado = today(); await apiPost('updateTask', { projectId: activeProjectId, taskId: t.id, patch: { titulo: nuevo } }); }
+  }
+}, true);
+document.getElementById('tableBody').addEventListener('dragover', (e)=>{ if(e.target.closest('tr.task-row')) e.preventDefault(); });
+document.getElementById('tableBody').addEventListener('drop', async (e)=>{
+  const row = e.target.closest('tr.task-row');
+  if(!row || !dragTaskId || row.dataset.id===dragTaskId) return;
+  e.preventDefault();
+  const list = projectData.tareas;
+  const dragged = findTarea(list, dragTaskId);
+  if(!dragged) return;
+  removeTareaLocal(list, dragTaskId);
+  const target = findTarea(list, row.dataset.id);
+  if(target){ target.hijos.push(dragged); target.expandido = true; }
+  renderProjectScreen();
+  await apiPost('updateTask', { projectId: activeProjectId, taskId: dragTaskId, patch: {} }); // reordenar visualmente; el ParentID real se ajusta en el próximo refresco
+});
+['searchBox','filterEstado','filterPrioridad'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', renderTable);
+  document.getElementById(id).addEventListener('change', renderTable);
+});
+
+let pendingFileTaskId = null;
+document.getElementById('hiddenFileInput').addEventListener('change', async (e)=>{
+  const t = findTarea(projectData.tareas, pendingFileTaskId); if(!t) return;
+  for(const file of e.target.files){
+    const base64 = await fileToBase64(file);
+    const r = await apiPost('uploadFile', { projectId: activeProjectId, usuario: session.usuario, taskId: t.id, filename: file.name, mimeType: file.type, base64 });
+    if(!r.ok){ alert('Error: ' + r.error); continue; }
+    t.archivos = t.archivos || []; t.archivos.push(r.archivo);
+  }
+  t.actualizado = today();
+  renderProjectScreen();
+  e.target.value = '';
+});
+
+let taskDialogParentId = null;
+function openTaskDialog(parentId){
+  taskDialogParentId = parentId;
+  document.getElementById('dlgTaskTitle').textContent = parentId ? 'Nueva subtarea' : 'Nueva tarea';
+  document.getElementById('dlgTaskName').value = '';
+  document.getElementById('dlgTask').showModal();
+  document.getElementById('dlgTaskName').focus();
+}
+document.getElementById('dlgTaskSave').onclick = async ()=>{
+  const nombre = document.getElementById('dlgTaskName').value.trim(); if(!nombre) return;
+  const r = await apiPost('addTask', { projectId: activeProjectId, titulo: nombre, parentId: taskDialogParentId||'' });
+  if(!r.ok){ alert('Error: ' + r.error); return; }
+  const nueva = { id:r.id, titulo:nombre, responsable:'', estado:'No iniciado', vencimiento:'', prioridad:'Media', archivos:[], notas:'', sprintId:null, cronogramaInicio:'', cronogramaFin:'', enlaces:[], actualizado:today(), expandido:false, hijos:[] };
+  if(taskDialogParentId){ const parent=findTarea(projectData.tareas, taskDialogParentId); parent.hijos.push(nueva); parent.expandido=true; }
+  else projectData.tareas.push(nueva);
+  renderProjectScreen();
+  document.getElementById('dlgTask').close();
+};
+document.getElementById('btnAddTask').onclick = ()=> openTaskDialog(null);
+
+let notesTaskId = null;
+function openNotesDialog(id){ notesTaskId=id; document.getElementById('dlgNotesText').value = findTarea(projectData.tareas,id).notas||''; document.getElementById('dlgNotes').showModal(); }
+document.getElementById('dlgNotesSave').onclick = async ()=>{
+  const t = findTarea(projectData.tareas, notesTaskId);
+  t.notas = document.getElementById('dlgNotesText').value; t.actualizado = today();
+  renderProjectScreen();
+  document.getElementById('dlgNotes').close();
+  await apiPost('updateTask', { projectId: activeProjectId, taskId: t.id, patch: { notas: t.notas } });
+};
+
+let linksTaskId = null;
+function renderLinksListView(){
+  const t = findTarea(projectData.tareas, linksTaskId);
+  const box = document.getElementById('linksListView');
+  const enlaces = t.enlaces || [];
+  if(enlaces.length===0){ box.innerHTML = `<p style="color:var(--txt-dim);font-size:.82rem">Todavía no hay enlaces ni documentos para este módulo.</p>`; return; }
+  box.innerHTML = enlaces.map(l=>`
+    <div>
+      <div class="part-row" style="grid-template-columns:1fr 24px 30px">
+        <a class="doc-link" style="text-align:left" href="${escapeHtml(l.url)}" target="_blank" rel="noopener" data-log-doc="${linksTaskId}:${l.id}:${escapeHtml(l.nombre)}">${LINK_ICON_SVG[l.tipo]||LINK_ICON_SVG.enlace} ${escapeHtml(l.nombre)}</a>
+        <button type="button" data-show-accesos="${l.id}" title="Ver quién lo abrió">🕐</button>
+        <button type="button" data-remove-link="${l.id}" title="Eliminar">✕</button>
+      </div>
+      <div id="accesos-${l.id}" style="display:none;font-size:.76rem;color:var(--txt-dim);margin:2px 0 8px 4px"></div>
+    </div>`).join('');
+  box.querySelectorAll('[data-remove-link]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      if(!confirm('¿Estás seguro de eliminar este enlace? Esto solo quita la referencia, no borra el archivo.')) return;
+      const errEl = document.getElementById('dlgLinksErr');
+      try{
+        const r = await apiPost('deleteTaskLink', { projectId: activeProjectId, taskId: linksTaskId, adminUsuario: session.usuario, adminPassword: session.password, linkId: btn.dataset.removeLink });
+        if(!r.ok){ errEl.textContent = 'Error: ' + (r.error||'no se pudo eliminar.'); return; }
+        t.enlaces = enlaces.filter(x=>x.id!==btn.dataset.removeLink);
+        renderLinksListView();
+        renderProjectScreen();
+      } catch(err){ errEl.textContent = 'Error: no se pudo conectar con el backend.'; }
+    };
+  });
+  box.querySelectorAll('[data-show-accesos]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const linkId = btn.dataset.showAccesos;
+      const box2 = document.getElementById('accesos-'+linkId);
+      if(box2.style.display==='block'){ box2.style.display='none'; return; }
+      box2.style.display = 'block';
+      box2.textContent = 'Cargando...';
+      try{
+        const r = await apiGet('getDocAccessLog', { projectId: activeProjectId, linkId });
+        if(!r.ok || !r.accesos.length){ box2.textContent = 'Sin accesos registrados todavía.'; return; }
+        box2.innerHTML = 'Últimos accesos: ' + r.accesos.map(a=>`${escapeHtml(a.usuario)} (${a.rol}) — ${new Date(a.fecha).toLocaleString()}`).join(' · ');
+      } catch(err){ box2.textContent = 'No se pudo cargar el historial.'; }
+    };
+  });
+}
+function openLinksDialog(id){
+  linksTaskId = id;
+  document.getElementById('dlgNewLinkUrl').value = '';
+  document.getElementById('dlgNewDocName').value = '';
+  document.getElementById('dlgLinksErr').textContent = '';
+  renderLinksListView();
+  document.getElementById('dlgLinks').showModal();
+}
+document.getElementById('btnAddExistingLink').onclick = async ()=>{
+  const url = document.getElementById('dlgNewLinkUrl').value.trim();
+  const errEl = document.getElementById('dlgLinksErr');
+  if(!url){ errEl.textContent = 'Ingresa una URL.'; return; }
+  try{
+    const r = await apiPost('addTaskLink', { projectId: activeProjectId, taskId: linksTaskId, adminUsuario: session.usuario, adminPassword: session.password, url });
+    if(!r.ok){ errEl.textContent = 'Error: ' + (r.error || 'no se pudo agregar el enlace.'); return; }
+    const t = findTarea(projectData.tareas, linksTaskId);
+    t.enlaces = (t.enlaces||[]).concat([r.enlace]);
+    document.getElementById('dlgNewLinkUrl').value = '';
+    errEl.textContent = '';
+    renderLinksListView();
+    renderProjectScreen();
+  } catch(err){ errEl.textContent = 'Error: no se pudo conectar con el backend.'; }
+};
+document.querySelectorAll('[data-create-online]').forEach(btn=>{
+  btn.onclick = async ()=>{
+    const errEl = document.getElementById('dlgLinksErr');
+    const titulo = document.getElementById('dlgNewDocName').value.trim();
+    if(!titulo){ errEl.textContent = 'Ingresa el nombre del documento.'; return; }
+    btn.disabled = true;
+    const original = btn.textContent; btn.textContent = 'Creando...';
+    try{
+      const r = await apiPost('createOnlineDoc', { projectId: activeProjectId, taskId: linksTaskId, adminUsuario: session.usuario, adminPassword: session.password, tipo: btn.dataset.createOnline, titulo });
+      if(!r.ok){ errEl.textContent = 'Error: ' + (r.error || 'no se pudo crear el documento.'); return; }
+      const t = findTarea(projectData.tareas, linksTaskId);
+      t.enlaces = (t.enlaces||[]).concat([r.enlace]);
+      document.getElementById('dlgNewDocName').value = '';
+      errEl.textContent = '';
+      renderLinksListView();
+      renderProjectScreen();
+    } catch(err){ errEl.textContent = 'Error: no se pudo conectar con el backend.'; }
+    finally { btn.disabled = false; btn.textContent = original; }
+  };
+});
+
+// ---------- Kanban ----------
+function renderKanban(){
+  const cols = document.getElementById('kanbanCols'); cols.innerHTML = '';
+  const allFlat = flattenAllIgnoreCollapse(projectData.tareas);
+  ESTADOS.forEach(estado=>{
+    const col = document.createElement('div'); col.className='kcol'; col.dataset.estado=estado;
+    const items = allFlat.filter(r=>r.t.estado===estado);
+    col.innerHTML = `<h3>${estado} <span class="count-pill">${items.length}</span></h3>`;
+    items.forEach(({t,parents})=>{
+      const card = document.createElement('div'); card.className='kcard'; card.draggable=true; card.dataset.id=t.id;
+      card.innerHTML = `${parents.length?`<div class="brc">${escapeHtml(parents.join(' / '))}</div>`:''}<div>${escapeHtml(t.titulo)}</div>
+        <div style="margin-top:6px"><span class="badge prio-${t.prioridad}" style="min-width:auto;padding:2px 8px">${t.prioridad}</span></div>`;
+      card.ondragstart = ()=>{ dragTaskId=t.id; card.classList.add('dragging'); };
+      card.ondragend = ()=> card.classList.remove('dragging');
+      col.appendChild(card);
+    });
+    col.ondragover = (e)=>{ e.preventDefault(); col.classList.add('dragover'); };
+    col.ondragleave = ()=> col.classList.remove('dragover');
+    col.ondrop = async (e)=>{ e.preventDefault(); col.classList.remove('dragover');
+      const t = findTarea(projectData.tareas, dragTaskId);
+      if(t){ t.estado=estado; t.actualizado=today(); renderProjectScreen(); await apiPost('updateTask',{projectId:activeProjectId, taskId:t.id, patch:{estado}}); } };
+    cols.appendChild(col);
+  });
+}
+
+// ---------- Gantt ----------
+function renderGantt(){
+  const wrap = document.getElementById('ganttWrap');
+  const all = flattenAllIgnoreCollapse(projectData.tareas).filter(r=>r.t.cronogramaInicio && r.t.cronogramaFin);
+  if(all.length===0){ wrap.innerHTML = '<div class="empty-hint2">Ninguna tarea tiene fechas de cronograma todavía. Ve a la Tabla principal y define inicio/fin en la columna "Cronograma".</div>'; return; }
+  const starts = all.map(r=>new Date(r.t.cronogramaInicio).getTime());
+  const ends = all.map(r=>new Date(r.t.cronogramaFin).getTime());
+  const minD = Math.min(...starts), maxD = Math.max(...ends);
+  const totalDays = Math.max(1,(maxD-minD)/86400000);
+  const pxPerDay = Math.max(6, Math.min(40, 1000/totalDays));
+  const trackWidth = totalDays*pxPerDay;
+  let html = `<div class="gantt-header"><div class="gantt-label">Tarea</div><div style="font-size:.75rem;color:var(--txt-dim)">${new Date(minD).toLocaleDateString()} → ${new Date(maxD).toLocaleDateString()}</div></div>`;
+  all.forEach(({t,parents})=>{
+    const s = new Date(t.cronogramaInicio).getTime(), e = new Date(t.cronogramaFin).getTime();
+    const left = (s-minD)/86400000*pxPerDay;
+    const width = Math.max(6,(e-s)/86400000*pxPerDay);
+    const label = (parents.length? parents.join(' / ')+' / ' : '') + t.titulo;
+    html += `<div class="gantt-row"><div class="gantt-label" title="${escapeHtml(label)}">${escapeHtml(label)}</div>
+      <div class="gantt-track" style="width:${trackWidth}px"><div class="gantt-bar" style="left:${left}px;width:${width}px;background:${ESTADO_COLOR[t.estado]}" title="${t.cronogramaInicio} → ${t.cronogramaFin}"></div></div></div>`;
+  });
+  wrap.innerHTML = html;
+}
+
+// ---------- Sprints / Backlog ----------
+let selectedSprintId = '';
+function renderSprints(){
+  const list = document.getElementById('sprintList');
+  const sprints = projectData.sprints;
+  if(!selectedSprintId && sprints[0]) selectedSprintId = sprints[0].id;
+  list.innerHTML = sprints.map(s=>`<div class="sprint-item ${s.id===selectedSprintId?'active':''}" data-sprint="${s.id}"><strong>${escapeHtml(s.nombre)}</strong><br><small>${s.inicio||'?'} → ${s.fin||'?'}</small></div>`).join('')
+    + `<div class="sprint-item ${selectedSprintId===''?'active':''}" data-sprint="">📋 Backlog (sin sprint)</div>`;
+  list.querySelectorAll('[data-sprint]').forEach(el=>{ el.onclick = ()=>{ selectedSprintId=el.dataset.sprint; renderSprints(); }; });
+  const detail = document.getElementById('sprintDetail');
+  const allFlat = flattenAllIgnoreCollapse(projectData.tareas);
+  const items = allFlat.filter(r => (r.t.sprintId||'') === selectedSprintId);
+  const sprint = sprints.find(s=>s.id===selectedSprintId);
+  detail.innerHTML = `<h3>${sprint ? escapeHtml(sprint.nombre) : 'Backlog'}</h3>${sprint?`<p style="color:var(--txt-dim)">${escapeHtml(sprint.meta||'')}</p>`:''}
+    <table class="board"><thead><tr><th>Tarea</th><th>Estado</th><th>Prioridad</th><th>Responsable</th></tr></thead><tbody>
+    ${items.length? items.map(({t,parents})=>`<tr class="task-row"><td>${parents.length?`<small style="color:var(--txt-dim)">${escapeHtml(parents.join(' / '))} / </small>`:''}${escapeHtml(t.titulo)}</td>
+      <td><span class="badge estado-${t.estado.replace(/ /g,'-')}">${t.estado}</span></td><td><span class="badge prio-${t.prioridad}">${t.prioridad}</span></td><td>${escapeHtml(t.responsable||'—')}</td></tr>`).join('')
+      : `<tr><td colspan="4" class="empty-hint2">Sin tareas asignadas</td></tr>`}</tbody></table>`;
+}
+document.getElementById('btnNewSprint').onclick = ()=>{
+  ['dlgSprintName','dlgSprintStart','dlgSprintEnd','dlgSprintGoal'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('dlgSprint').showModal();
+};
+document.getElementById('dlgSprintSave').onclick = async ()=>{
+  const nombre = document.getElementById('dlgSprintName').value.trim(); if(!nombre) return;
+  const payload = { nombre, inicio: document.getElementById('dlgSprintStart').value, fin: document.getElementById('dlgSprintEnd').value, meta: document.getElementById('dlgSprintGoal').value };
+  const r = await apiPost('addSprint', { projectId: activeProjectId, ...payload });
+  if(!r.ok){ alert('Error: ' + r.error); return; }
+  projectData.sprints.push({ id:r.id, ...payload });
+  renderProjectScreen();
+  document.getElementById('dlgSprint').close();
+};
+
+// ---------- Reportes: stats + Excel + PDF ----------
+function reportRows(){
+  return flattenAllIgnoreCollapse(projectData.tareas).map(({t,parents})=>({
+    ruta: (parents.length? parents.join(' / ')+' / ' : '') + t.titulo,
+    responsable: t.responsable||'', estado: t.estado, vencimiento: t.vencimiento||'',
+    prioridad: t.prioridad, cronogramaInicio: t.cronogramaInicio||'', cronogramaFin: t.cronogramaFin||'',
+    notas: t.notas||'', actualizado: t.actualizado
+  }));
+}
+function renderReportes(){
+  const tareas = projectData.tareas;
+  const total = countAll(tareas), hechas = countByEstado(tareas,'Hecho'), progreso = countByEstado(tareas,'En progreso');
+  document.getElementById('reportesStats').innerHTML = `
+    <div class="stat-box"><div class="num">${total}</div><div class="lbl">Total tareas</div></div>
+    <div class="stat-box"><div class="num" style="color:var(--green)">${hechas}</div><div class="lbl">Completadas</div></div>
+    <div class="stat-box"><div class="num" style="color:var(--yellow)">${progreso}</div><div class="lbl">En progreso</div></div>
+    <div class="stat-box"><div class="num">${total?Math.round(hechas/total*100):0}%</div><div class="lbl">Avance</div></div>`;
+  const rows = reportRows();
+  document.getElementById('reportesTable').innerHTML = `<thead><tr><th>Tarea</th><th>Responsable</th><th>Estado</th><th>Prioridad</th><th>Vencimiento</th><th>Últ. actualización</th></tr></thead>
+    <tbody>${rows.map(r=>`<tr><td>${escapeHtml(r.ruta)}</td><td>${escapeHtml(r.responsable)}</td><td>${r.estado}</td><td>${r.prioridad}</td><td>${r.vencimiento}</td><td>${r.actualizado}</td></tr>`).join('')}</tbody>`;
+}
+document.getElementById('btnExportExcel').onclick = ()=>{
+  const rows = reportRows().map(r=>({
+    'Tarea': r.ruta, 'Responsable': r.responsable, 'Estado': r.estado, 'Prioridad': r.prioridad,
+    'Vencimiento': r.vencimiento, 'Cronograma inicio': r.cronogramaInicio, 'Cronograma fin': r.cronogramaFin,
+    'Notas': r.notas, 'Última actualización': r.actualizado
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Tareas');
+  XLSX.writeFile(wb, `${projectData.proyecto.nombre.replace(/[^a-z0-9]+/gi,'_')}.xlsx`);
+};
+document.getElementById('btnExportPDF').onclick = ()=>{
+  const p = projectData.proyecto;
+  const tareas = projectData.tareas;
+  const total = countAll(tareas), hechas = countByEstado(tareas,'Hecho');
+  const rows = reportRows();
+  document.getElementById('printArea').innerHTML = `
+    <h1>${escapeHtml(p.nombre)}</h1>
+    <p><strong>Objetivo:</strong> ${escapeHtml(p.objetivo||'—')}</p>
+    <p><strong>Resultados esperados:</strong> ${escapeHtml(p.resultados||'—')}</p>
+    <p><strong>Avance:</strong> ${hechas}/${total} tareas completadas (${total?Math.round(hechas/total*100):0}%) — Generado: ${today()}</p>
+    <table><thead><tr><th>Tarea</th><th>Responsable</th><th>Estado</th><th>Prioridad</th><th>Vencimiento</th></tr></thead>
+    <tbody>${rows.map(r=>`<tr><td>${escapeHtml(r.ruta)}</td><td>${escapeHtml(r.responsable)}</td><td>${r.estado}</td><td>${r.prioridad}</td><td>${r.vencimiento}</td></tr>`).join('')}</tbody></table>`;
+  window.print();
+};
+
+// ---------- render orchestration ----------
+function renderProjectScreen(){
+  document.getElementById('projTitle').textContent = projectData.proyecto.nombre;
+  document.getElementById('driveStatus').textContent = 'Proyecto en Drive ✓';
+  document.getElementById('sessionBadge').innerHTML = `${escapeHtml(session.usuario)} <span class="role-pill ${session.rol==='admin'?'admin':''}">${session.rol}</span>`;
+  if(activeTab==='resumen') renderResumen();
+  if(activeTab==='tabla') renderTable();
+  if(activeTab==='kanban') renderKanban();
+  if(activeTab==='gantt') renderGantt();
+  if(activeTab==='sprints') renderSprints();
+  if(activeTab==='reportes') renderReportes();
+}
+
+function renderAll(){
+  document.getElementById('homeScreen').style.display = screen==='home' ? '' : 'none';
+  document.getElementById('projectScreen').style.display = screen==='project' ? '' : 'none';
+  if(screen==='home') renderHome();
+  else renderProjectScreen();
+}
+
+async function restoreOrInit(){
+  // Si pasó más de 1 hora sin actividad desde la última vez (aunque la
+  // pestaña siga abierta y se haya recargado), se ignora cualquier estado
+  // guardado y se exige entrar de nuevo desde Proyectos.
+  const idleExpired = getIdleMs() > ONE_HOUR_MS;
+  touchActivity();
+  if(idleExpired){
+    const savedIdle = loadAppState();
+    if(savedIdle && savedIdle.activeProjectId) clearSession(savedIdle.activeProjectId);
+    localStorage.removeItem(APP_STATE_KEY);
+    history.replaceState(null, '', location.pathname + location.search);
+    screen = 'home'; session = null; activeProjectId = null;
+    document.getElementById('gateOverlay').style.display = 'none';
+    document.getElementById('homeScreen').style.display = '';
+    document.getElementById('projectScreen').style.display = 'none';
+    await loadHome();
+    return;
+  }
+
+  // localStorage manda siempre: si dice explícitamente "screen: home" (por
+  // ejemplo porque se usó "← Proyectos"), eso se respeta aunque quede un
+  // hash viejo en la URL (algunos navegadores/lectores de archivos locales
+  // no limpian el hash al refrescar). El hash solo se usa como respaldo
+  // cuando no hay absolutamente nada guardado todavía (ej. primera vez).
+  const saved = loadAppState();
+  let projectId = null, tab = 'resumen';
+  if(saved && saved.screen==='project' && saved.activeProjectId){
+    projectId = saved.activeProjectId;
+    tab = saved.activeTab || 'resumen';
+  } else if(!saved){
+    const hashState = parseHashState();
+    if(hashState){ projectId = hashState.projectId; tab = hashState.tab; }
+  }
+
+  if(projectId){
+    const sess = loadSession(projectId);
+    if(sess){
+      activeProjectId = projectId;
+      session = sess;
+      document.getElementById('homeScreen').style.display = 'none';
+      document.getElementById('projectScreen').style.display = '';
+      loadHome(); // deja la lista de proyectos lista en segundo plano para cuando se use "← Proyectos"
+      await enterProject(tab);
+      return;
+    }
+    // No hay sesión guardada (ej. se cerró el navegador): en vez de mostrar
+    // la lista completa, pide directamente el usuario/rol de este proyecto.
+    await loadHome();
+    await openProject(projectId);
+    return;
+  }
+  await loadHome();
+}
+restoreOrInit();
+</script>
+</body>
+</html>
