@@ -235,7 +235,6 @@ dialog .err{color:var(--red);font-size:.8rem;min-height:1em;margin-top:8px}
     <button class="btn ghost small" id="btnBackHome">← Proyectos</button>
     <h1 id="projTitle">Proyecto</h1>
     <span id="sessionBadge" class="role-pill">—</span>
-    <button class="btn ghost small" id="btnSwitchUser">Cambiar de usuario</button>
     <div class="spacer"></div>
     <span id="driveStatus" style="font-size:.76rem;color:var(--txt-dim)"></span>
   </header>
@@ -776,12 +775,6 @@ document.getElementById('gateSubmit').onclick = async ()=>{
   finally { btn.disabled = false; isBusyEntering = false; }
 };
 
-document.getElementById('btnSwitchUser').onclick = ()=>{
-  clearSession(activeProjectId);
-  session = null;
-  showGate(activeProjectId);
-};
-
 // =====================================================================
 // PROJECT SCREEN
 // =====================================================================
@@ -951,7 +944,7 @@ function renderTaskRow(t, depth){
     if(isAdmin()) manageBtnHtml = `<button class="btn ghost small" data-manage-links="${t.id}" title="Agregar o quitar enlaces/documentos">🔗+</button>`;
   }
   const usuarios = (projectData.usuarios||[]);
-  const respOptions = ['<option value="" disabled '+(t.responsable?'':'selected')+'>Seleccione el responsable</option>']
+  const respOptions = ['<option value="" '+(t.responsable?'':'selected')+'>Seleccione el responsable</option>']
     .concat(usuarios.map(u=>`<option ${u.nombre===t.responsable?'selected':''}>${escapeHtml(u.nombre)}</option>`))
     .concat((t.responsable && !usuarios.some(u=>u.nombre===t.responsable)) ? [`<option selected>${escapeHtml(t.responsable)}</option>`] : [])
     .join('');
@@ -962,7 +955,7 @@ function renderTaskRow(t, depth){
       ${manageBtnHtml}
       ${docIconsHtml ? `<div class="doc-icons-row">${docIconsHtml}</div>` : ''}
     </div></td>
-    <td><select class="resp-input${t.responsable?'':' is-placeholder'}" data-field="responsable" data-id="${t.id}">${respOptions}</select></td>
+    <td><select class="resp-input${t.responsable?'':' is-placeholder'}" data-field="responsable" data-id="${t.id}" ${isAdmin()?'':'disabled title="Solo el Admin puede asignar el responsable"'}>${respOptions}</select></td>
     <td><select class="tag-select estado-${t.estado.replace(/ /g,'-')}" data-field="estado" data-id="${t.id}">
       ${ESTADOS.map(e=>`<option ${e===t.estado?'selected':''}>${e}</option>`).join('')}</select></td>
     <td><input type="date" value="${t.vencimiento}" data-field="vencimiento" data-id="${t.id}"></td>
