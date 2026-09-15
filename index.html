@@ -82,16 +82,15 @@ table.board{width:100%;table-layout:fixed;border-collapse:collapse;background:va
 table.board th{background:var(--bg3);color:var(--txt-dim);text-align:left;padding:8px 6px;font-size:.7rem;text-transform:uppercase;letter-spacing:.02em;white-space:normal;overflow-wrap:break-word}
 table.board td{padding:6px;border-bottom:1px solid var(--line);vertical-align:middle;font-size:.78rem;overflow-wrap:break-word;word-break:break-word}
 /* Ancho por columna para que la tabla nunca necesite scroll horizontal */
-table.board th:nth-child(1){width:19%}
-table.board th:nth-child(2){width:8%}
-table.board th:nth-child(3){width:9%}
-table.board th:nth-child(4){width:8%}
-table.board th:nth-child(5){width:8%}
-table.board th:nth-child(6){width:11%}
-table.board th:nth-child(7){width:9%}
-table.board th:nth-child(8){width:11%}
-table.board th:nth-child(9){width:8%}
-table.board th:nth-child(10){width:9%}
+table.board th:nth-child(1){width:20%}
+table.board th:nth-child(2){width:9%}
+table.board th:nth-child(3){width:10%}
+table.board th:nth-child(4){width:9%}
+table.board th:nth-child(5){width:9%}
+table.board th:nth-child(6){width:12%}
+table.board th:nth-child(7){width:10%}
+table.board th:nth-child(8){width:12%}
+table.board th:nth-child(9){width:9%}
 table.board input,table.board select{max-width:100%}
 .doc-link.icon-only{padding:2px;display:inline-flex;align-items:center;justify-content:center;border-radius:4px}
 tr.group-row td{background:var(--bg3);font-weight:700;padding:8px;cursor:pointer}
@@ -123,7 +122,6 @@ input.resp-input:focus{background:var(--bg3)}
 .add-file{background:var(--bg3);border:1px dashed var(--line);color:var(--txt-dim);border-radius:50%;width:22px;height:22px;flex-shrink:0}
 .add-file[disabled]{opacity:.35;cursor:not-allowed}
 .depth-indent{display:inline-block}
-.sprint-pill{background:var(--bg3);border:1px solid var(--line);border-radius:6px;padding:4px 6px;color:var(--txt);font-size:.76rem}
 .cronograma-cell{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
 .cronograma-cell input[type=date]{width:100%;min-width:0}
 .kanban-cols{display:flex;flex-wrap:wrap;gap:14px}
@@ -133,10 +131,6 @@ input.resp-input:focus{background:var(--bg3)}
 .kcard .brc{color:var(--txt-dim);font-size:.7rem;margin-bottom:4px}
 .kcard.dragging{opacity:.4}
 .kcol.dragover{outline:2px dashed var(--accent)}
-.sprint-panel{display:grid;grid-template-columns:280px 1fr;gap:16px}
-.sprint-list .sprint-item{background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:8px;cursor:pointer}
-.sprint-item.active{border-color:var(--accent)}
-.sprint-item small{color:var(--txt-dim)}
 .empty-hint2{color:var(--txt-dim);padding:30px;text-align:center}
 dialog{background:var(--bg2);color:var(--txt);border:1px solid var(--line);border-radius:10px;padding:20px;width:420px;max-width:92vw}
 dialog::backdrop{background:rgba(0,0,0,.5)}
@@ -248,7 +242,6 @@ dialog .err{color:var(--red);font-size:.8rem;min-height:1em;margin-top:8px}
     <button data-tab="tabla">Tabla principal</button>
     <button data-tab="kanban">Kanban</button>
     <button data-tab="gantt">Gantt</button>
-    <button data-tab="sprints">Sprints / Backlog</button>
     <button data-tab="reportes">Reportes</button>
   </nav>
 
@@ -298,8 +291,7 @@ dialog .err{color:var(--red);font-size:.8rem;min-height:1em;margin-top:8px}
               <th>Archivos</th>
               <th>Notas</th>
               <th>Cronograma</th>
-              <th>Sprint</th>
-              <th>Últ. actualización</th>
+              <th>Últ. Act.</th>
             </tr>
           </thead>
           <tbody id="tableBody"></tbody>
@@ -316,16 +308,6 @@ dialog .err{color:var(--red);font-size:.8rem;min-height:1em;margin-top:8px}
         <span style="color:var(--txt-dim);font-size:.82rem">El Gantt usa las fechas de la columna "Cronograma" de cada tarea (defínelas en la Tabla principal).</span>
       </div>
       <div class="gantt-wrap" id="ganttWrap"></div>
-    </section>
-
-    <section id="tab-sprints" style="display:none">
-      <div class="sprint-panel">
-        <div>
-          <button class="btn" id="btnNewSprint" style="width:100%;margin-bottom:10px">+ Nuevo sprint</button>
-          <div class="sprint-list" id="sprintList"></div>
-        </div>
-        <div id="sprintDetail"></div>
-      </div>
     </section>
 
     <section id="tab-reportes" style="display:none">
@@ -397,18 +379,6 @@ dialog .err{color:var(--red);font-size:.8rem;min-height:1em;margin-top:8px}
   <div class="actions">
     <button class="btn ghost" data-close>Cancelar</button>
     <button class="btn" id="dlgPartSave">Agregar</button>
-  </div>
-</dialog>
-
-<dialog id="dlgSprint">
-  <h3>Nuevo sprint</h3>
-  <label>Nombre</label><input id="dlgSprintName" placeholder="Sprint 1">
-  <label>Fecha inicio</label><input type="date" id="dlgSprintStart">
-  <label>Fecha fin</label><input type="date" id="dlgSprintEnd">
-  <label>Meta del sprint</label><textarea id="dlgSprintGoal" rows="2"></textarea>
-  <div class="actions">
-    <button class="btn ghost" data-close>Cancelar</button>
-    <button class="btn" id="dlgSprintSave">Guardar</button>
   </div>
 </dialog>
 
@@ -496,6 +466,12 @@ async function apiPost(action, payload){
 
 function uid(prefix){ return prefix + '_' + Math.random().toString(36).slice(2,10); }
 function today(){ return new Date().toISOString().slice(0,10); }
+// Fecha y hora local, formato compacto para "Últ. Act.": 2026-09-14 16:54
+function nowStamp(){
+  const d = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function fileToBase64(file){
   return new Promise((resolve,reject)=>{
@@ -548,7 +524,7 @@ setInterval(()=>{
 let homeProjects = [];
 let screen = 'home'; // 'home' | 'project'
 let activeProjectId = null;
-let projectData = null; // { proyecto, usuarios, tareas, sprints }
+let projectData = null; // { proyecto, usuarios, tareas }
 let session = null; // { usuario, rol, password? }
 let activeTab = 'resumen';
 let dragTaskId = null;
@@ -818,7 +794,7 @@ async function enterProject(preserveTab){
   screen = 'project';
   activeTab = preserveTab || 'resumen';
   document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab===activeTab));
-  ['resumen','tabla','kanban','gantt','sprints','reportes'].forEach(k=> document.getElementById('tab-'+k).style.display = (k===activeTab)?'':'none');
+  ['resumen','tabla','kanban','gantt','reportes'].forEach(k=> document.getElementById('tab-'+k).style.display = (k===activeTab)?'':'none');
   renderAll();
   persistAppState();
 }
@@ -854,7 +830,7 @@ document.querySelectorAll('nav.tabs button').forEach(btn=>{
     persistAppState();
     document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
-    ['resumen','tabla','kanban','gantt','sprints','reportes'].forEach(k=>{
+    ['resumen','tabla','kanban','gantt','reportes'].forEach(k=>{
       document.getElementById('tab-'+k).style.display = (k===activeTab) ? '' : 'none';
     });
     renderProjectScreen();
@@ -942,13 +918,13 @@ function renderTable(){
     const rows = hasFilter ? flat.filter(row=>matches(row.t)) : flat;
     const groupTr = document.createElement('tr');
     groupTr.className = 'group-row ' + g.cls;
-    groupTr.innerHTML = `<td colspan="10">▼ ${g.label} <span class="count-pill">${g.roots.length}</span></td>`;
+    groupTr.innerHTML = `<td colspan="9">▼ ${g.label} <span class="count-pill">${g.roots.length}</span></td>`;
     tbody.appendChild(groupTr);
-    if(rows.length===0){ const tr=document.createElement('tr'); tr.innerHTML=`<td colspan="10" class="empty-hint2">Sin tareas</td>`; tbody.appendChild(tr); }
+    if(rows.length===0){ const tr=document.createElement('tr'); tr.innerHTML=`<td colspan="9" class="empty-hint2">Sin tareas</td>`; tbody.appendChild(tr); }
     rows.forEach(({t, depth})=> tbody.appendChild(renderTaskRow(t, depth)));
     if(g.key==='activos'){
       const addTr = document.createElement('tr'); addTr.className='add-row';
-      addTr.innerHTML = `<td colspan="10">+ Agregar tarea</td>`;
+      addTr.innerHTML = `<td colspan="9">+ Agregar tarea</td>`;
       addTr.onclick = ()=> openTaskDialog(null);
       tbody.appendChild(addTr);
     }
@@ -963,7 +939,6 @@ function renderTaskRow(t, depth){
   const indent = `<span class="depth-indent" style="width:${depth*22}px"></span>`;
   const filesHtml = (t.archivos||[]).map((f)=>`<span class="file-chip"><a href="${f.url}" target="_blank" rel="noopener">📎 ${escapeHtml(f.nombre)}</a>${(isAdmin()||f.subidoPor===session.usuario)?`<button data-file-del="${t.id}:${f.id}">✕</button>`:''}</span>`).join('');
   const puedeSubir = canUploadTo(t);
-  const sprintOptions = projectData.sprints.map(s=>`<option value="${s.id}" ${t.sprintId===s.id?'selected':''}>${escapeHtml(s.nombre)}</option>`).join('');
   let docLinkHtml = '';
   if(depth===0){
     // Solo el ícono (logo por tipo) en la tabla, para no ocupar espacio con
@@ -986,8 +961,7 @@ function renderTaskRow(t, depth){
     <td><div class="files-cell">${filesHtml}<button class="add-file" data-add-file="${t.id}" ${puedeSubir?'':'disabled'} title="${puedeSubir?'Subir archivo':'Solo '+(t.responsable||'el responsable asignado')+' puede subir aquí'}">+</button></div></td>
     <td><span class="task-title" data-open-notes="${t.id}" title="${escapeHtml(t.notas)}">${t.notas ? escapeHtml(t.notas.slice(0,20))+(t.notas.length>20?'…':'') : '+ Notas'}</span></td>
     <td><div class="cronograma-cell"><input type="date" value="${t.cronogramaInicio}" data-field="cronogramaInicio" data-id="${t.id}"><input type="date" value="${t.cronogramaFin}" data-field="cronogramaFin" data-id="${t.id}"></div></td>
-    <td><select class="sprint-pill" data-field="sprintId" data-id="${t.id}"><option value="">Backlog</option>${sprintOptions}</select></td>
-    <td style="color:var(--txt-dim);font-size:.76rem">${t.actualizado}<br><button class="btn ghost small" data-del="${t.id}" style="margin-top:4px;color:var(--red);border-color:var(--red)">Eliminar</button></td>
+    <td style="color:var(--txt-dim);font-size:.76rem">${escapeHtml(t.actualizado||'').replace(' ','<br>')}<br><button class="btn ghost small" data-del="${t.id}" style="margin-top:4px;color:var(--red);border-color:var(--red)">Eliminar</button></td>
   `;
   return tr;
 }
@@ -1027,7 +1001,7 @@ document.getElementById('tableBody').addEventListener('change', async (e)=>{
   const f = e.target.closest('[data-field]');
   if(f){
     const t = findTarea(projectData.tareas, f.dataset.id);
-    t[f.dataset.field] = f.value; t.actualizado = today();
+    t[f.dataset.field] = f.value; t.actualizado = nowStamp();
     renderTable();
     await apiPost('updateTask', { projectId: activeProjectId, taskId: t.id, patch: { [f.dataset.field]: f.value } });
   }
@@ -1037,7 +1011,7 @@ document.getElementById('tableBody').addEventListener('blur', async (e)=>{
   if(title){
     const t = findTarea(projectData.tareas, title.dataset.editTitle);
     const nuevo = title.textContent.trim()||t.titulo;
-    if(nuevo !== t.titulo){ t.titulo = nuevo; t.actualizado = today(); await apiPost('updateTask', { projectId: activeProjectId, taskId: t.id, patch: { titulo: nuevo } }); }
+    if(nuevo !== t.titulo){ t.titulo = nuevo; t.actualizado = nowStamp(); await apiPost('updateTask', { projectId: activeProjectId, taskId: t.id, patch: { titulo: nuevo } }); }
   }
 }, true);
 document.getElementById('tableBody').addEventListener('dragover', (e)=>{ if(e.target.closest('tr.task-row')) e.preventDefault(); });
@@ -1068,7 +1042,7 @@ document.getElementById('hiddenFileInput').addEventListener('change', async (e)=
     if(!r.ok){ alert('Error: ' + r.error); continue; }
     t.archivos = t.archivos || []; t.archivos.push(r.archivo);
   }
-  t.actualizado = today();
+  t.actualizado = nowStamp();
   renderProjectScreen();
   e.target.value = '';
 });
@@ -1085,7 +1059,7 @@ document.getElementById('dlgTaskSave').onclick = async ()=>{
   const nombre = document.getElementById('dlgTaskName').value.trim(); if(!nombre) return;
   const r = await apiPost('addTask', { projectId: activeProjectId, titulo: nombre, parentId: taskDialogParentId||'' });
   if(!r.ok){ alert('Error: ' + r.error); return; }
-  const nueva = { id:r.id, titulo:nombre, responsable:'', estado:'No iniciado', vencimiento:'', prioridad:'Media', archivos:[], notas:'', sprintId:null, cronogramaInicio:'', cronogramaFin:'', enlaces:[], actualizado:today(), expandido:false, hijos:[] };
+  const nueva = { id:r.id, titulo:nombre, responsable:'', estado:'No iniciado', vencimiento:'', prioridad:'Media', archivos:[], notas:'', cronogramaInicio:'', cronogramaFin:'', enlaces:[], actualizado:nowStamp(), expandido:false, hijos:[] };
   if(taskDialogParentId){ const parent=findTarea(projectData.tareas, taskDialogParentId); parent.hijos.push(nueva); parent.expandido=true; }
   else projectData.tareas.push(nueva);
   renderProjectScreen();
@@ -1097,7 +1071,7 @@ let notesTaskId = null;
 function openNotesDialog(id){ notesTaskId=id; document.getElementById('dlgNotesText').value = findTarea(projectData.tareas,id).notas||''; document.getElementById('dlgNotes').showModal(); }
 document.getElementById('dlgNotesSave').onclick = async ()=>{
   const t = findTarea(projectData.tareas, notesTaskId);
-  t.notas = document.getElementById('dlgNotesText').value; t.actualizado = today();
+  t.notas = document.getElementById('dlgNotesText').value; t.actualizado = nowStamp();
   renderProjectScreen();
   document.getElementById('dlgNotes').close();
   await apiPost('updateTask', { projectId: activeProjectId, taskId: t.id, patch: { notas: t.notas } });
@@ -1210,7 +1184,7 @@ function renderKanban(){
     col.ondragleave = ()=> col.classList.remove('dragover');
     col.ondrop = async (e)=>{ e.preventDefault(); col.classList.remove('dragover');
       const t = findTarea(projectData.tareas, dragTaskId);
-      if(t){ t.estado=estado; t.actualizado=today(); renderProjectScreen(); await apiPost('updateTask',{projectId:activeProjectId, taskId:t.id, patch:{estado}}); } };
+      if(t){ t.estado=estado; t.actualizado=nowStamp(); renderProjectScreen(); await apiPost('updateTask',{projectId:activeProjectId, taskId:t.id, patch:{estado}}); } };
     cols.appendChild(col);
   });
 }
@@ -1237,39 +1211,6 @@ function renderGantt(){
   });
   wrap.innerHTML = html;
 }
-
-// ---------- Sprints / Backlog ----------
-let selectedSprintId = '';
-function renderSprints(){
-  const list = document.getElementById('sprintList');
-  const sprints = projectData.sprints;
-  if(!selectedSprintId && sprints[0]) selectedSprintId = sprints[0].id;
-  list.innerHTML = sprints.map(s=>`<div class="sprint-item ${s.id===selectedSprintId?'active':''}" data-sprint="${s.id}"><strong>${escapeHtml(s.nombre)}</strong><br><small>${s.inicio||'?'} → ${s.fin||'?'}</small></div>`).join('')
-    + `<div class="sprint-item ${selectedSprintId===''?'active':''}" data-sprint="">📋 Backlog (sin sprint)</div>`;
-  list.querySelectorAll('[data-sprint]').forEach(el=>{ el.onclick = ()=>{ selectedSprintId=el.dataset.sprint; renderSprints(); }; });
-  const detail = document.getElementById('sprintDetail');
-  const allFlat = flattenAllIgnoreCollapse(projectData.tareas);
-  const items = allFlat.filter(r => (r.t.sprintId||'') === selectedSprintId);
-  const sprint = sprints.find(s=>s.id===selectedSprintId);
-  detail.innerHTML = `<h3>${sprint ? escapeHtml(sprint.nombre) : 'Backlog'}</h3>${sprint?`<p style="color:var(--txt-dim)">${escapeHtml(sprint.meta||'')}</p>`:''}
-    <table class="board"><thead><tr><th>Tarea</th><th>Estado</th><th>Prioridad</th><th>Responsable</th></tr></thead><tbody>
-    ${items.length? items.map(({t,parents})=>`<tr class="task-row"><td>${parents.length?`<small style="color:var(--txt-dim)">${escapeHtml(parents.join(' / '))} / </small>`:''}${escapeHtml(t.titulo)}</td>
-      <td><span class="badge estado-${t.estado.replace(/ /g,'-')}">${t.estado}</span></td><td><span class="badge prio-${t.prioridad}">${t.prioridad}</span></td><td>${escapeHtml(t.responsable||'—')}</td></tr>`).join('')
-      : `<tr><td colspan="4" class="empty-hint2">Sin tareas asignadas</td></tr>`}</tbody></table>`;
-}
-document.getElementById('btnNewSprint').onclick = ()=>{
-  ['dlgSprintName','dlgSprintStart','dlgSprintEnd','dlgSprintGoal'].forEach(id=>document.getElementById(id).value='');
-  document.getElementById('dlgSprint').showModal();
-};
-document.getElementById('dlgSprintSave').onclick = async ()=>{
-  const nombre = document.getElementById('dlgSprintName').value.trim(); if(!nombre) return;
-  const payload = { nombre, inicio: document.getElementById('dlgSprintStart').value, fin: document.getElementById('dlgSprintEnd').value, meta: document.getElementById('dlgSprintGoal').value };
-  const r = await apiPost('addSprint', { projectId: activeProjectId, ...payload });
-  if(!r.ok){ alert('Error: ' + r.error); return; }
-  projectData.sprints.push({ id:r.id, ...payload });
-  renderProjectScreen();
-  document.getElementById('dlgSprint').close();
-};
 
 // ---------- Reportes: stats + Excel + PDF ----------
 function reportRows(){
@@ -1327,7 +1268,6 @@ function renderProjectScreen(){
   if(activeTab==='tabla') renderTable();
   if(activeTab==='kanban') renderKanban();
   if(activeTab==='gantt') renderGantt();
-  if(activeTab==='sprints') renderSprints();
   if(activeTab==='reportes') renderReportes();
 }
 
