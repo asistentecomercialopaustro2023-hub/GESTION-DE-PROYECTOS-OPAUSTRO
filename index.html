@@ -1057,6 +1057,7 @@ document.getElementById('tableBody').addEventListener('click', async (e)=>{
   const fileDel = e.target.closest('[data-file-del]');
   if(fileDel){
     const [tid,fid] = fileDel.dataset.fileDel.split(':');
+    if(!confirm('¿Eliminar el archivo "'+fileDel.title.replace(/^Eliminar /,'')+'"?')) return;
     const r = await apiPost('deleteFile', { projectId: activeProjectId, usuario: session.usuario, archivoId: fid });
     if(!r.ok){ alert('Error: ' + r.error); return; }
     const t = findTarea(projectData.tareas, tid);
