@@ -62,7 +62,7 @@ button{cursor:pointer}
 .pwd-wrap input{padding-right:36px}
 .pwd-eye{position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;font-size:1rem;padding:4px 6px;opacity:.7}
 .pwd-eye:hover{opacity:1}
-.doc-link{color:var(--accent);text-decoration:none;font-size:.78rem;background:var(--bg3);border:1px solid var(--line);border-radius:6px;padding:4px 8px;white-space:nowrap}
+.doc-link{color:var(--accent);text-decoration:none;font-size:.78rem;background:var(--bg3);border:1px solid var(--line);border-radius:6px;padding:4px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;display:inline-block;vertical-align:middle;box-sizing:border-box}
 .doc-link:hover{border-color:var(--accent)}
 .role-pill{display:inline-block;font-size:.7rem;padding:2px 8px;border-radius:10px;background:var(--bg3);color:var(--txt-dim);margin-left:8px}
 .role-pill.admin{background:#3d2a00;color:var(--yellow)}
@@ -1227,7 +1227,7 @@ function renderLinksListView(){
   box.innerHTML = enlaces.map(l=>`
     <div>
       <div class="part-row" style="grid-template-columns:1fr 24px 30px">
-        <a class="doc-link" style="text-align:left" href="${escapeHtml(l.url)}" target="_blank" rel="noopener" data-log-doc="${linksTaskId}:${l.id}:${escapeHtml(l.nombre)}">${LINK_ICON_SVG[l.tipo]||LINK_ICON_SVG.enlace} ${escapeHtml(l.nombre)}</a>
+        <a class="doc-link" style="text-align:left" title="${escapeHtml(l.nombre)}" href="${escapeHtml(l.url)}" target="_blank" rel="noopener" data-log-doc="${linksTaskId}:${l.id}:${escapeHtml(l.nombre)}">${LINK_ICON_SVG[l.tipo]||LINK_ICON_SVG.enlace} ${escapeHtml(l.nombre)}</a>
         <button type="button" data-show-accesos="${l.id}" title="Ver quién lo abrió">🕐</button>
         <button type="button" data-remove-link="${l.id}" title="Eliminar">✕</button>
       </div>
