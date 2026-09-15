@@ -742,7 +742,9 @@ function uploadFile(body) {
     return { ok: false, error: 'No autorizado: solo "' + (tarea.Responsable || 'el responsable asignado') + '" puede subir archivos a esta tarea.' };
   }
 
-  var subfolderName = tarea.Responsable ? tarea.Responsable : 'General';
+  // El archivo se guarda en la carpeta de quien lo sube (no la del
+  // responsable de la tarea, que puede ser otra persona o estar vacía).
+  var subfolderName = body.usuario ? body.usuario : 'General';
   var subfolder = getOrCreateSubfolder_(folder, subfolderName);
   var bytes = Utilities.base64Decode(body.base64);
   var blob = Utilities.newBlob(bytes, body.mimeType || 'application/octet-stream', body.filename || 'archivo');
