@@ -403,6 +403,23 @@ function saveConfig(body) {
   return { ok: true };
 }
 
+// El Responsable ahora admite VARIAS personas por tarea, guardadas como
+// array JSON en la misma columna "Responsable" (ej. ["Ana Perez","Luis
+// Gomez"]). Si la tarea todavía tiene el valor anterior (un solo nombre en
+// texto plano, de antes de este cambio), se interpreta igual sin migrar nada.
+function leerResponsables_(valorCelda) {
+  if (!valorCelda) return [];
+  try {
+    var arr = JSON.parse(valorCelda);
+    if (Array.isArray(arr)) return arr.filter(Boolean);
+  } catch (e) { /* no era JSON: era el texto plano de la versión anterior */ }
+  return [String(valorCelda)];
+}
+function esUnoDeLosResponsables_(valorCelda, usuario) {
+  var buscado = String(usuario || '').trim().toLowerCase();
+  return leerResponsables_(valorCelda).some(function (r) { return String(r).trim().toLowerCase() === buscado; });
+}
+
 // Google Sheets a veces guarda un texto de fecha como un objeto Date real.
 // Si no se formatea explícitamente, JSON.stringify lo convierte a algo como
 // "2026-09-14T05:00:00.000Z" — estas funciones evitan eso.
@@ -438,8 +455,13 @@ function getProjectData(projectId) {
 
   var byId = {};
   tareasFlat.forEach(function (t) {
+    var responsables = leerResponsables_(t.Responsable);
     byId[t.ID] = {
-      id: t.ID, parentId: t.ParentID || null, titulo: t.Titulo, responsable: t.Responsable || '',
+      id: t.ID, parentId: t.ParentID || null, titulo: t.Titulo,
+      // "responsables" (array) es lo nuevo; "responsable" (texto, unidos con
+      // coma) se mantiene para lo que solo necesita mostrarlo como texto
+      // (ej. reportes, mensajes de permiso), sin tener que tocar cada lugar.
+      responsables: responsables, responsable: responsables.join(', '),
       estado: t.Estado || 'No iniciado', vencimiento: fmtDateOnly_(t.Vencimiento), prioridad: t.Prioridad || 'Media',
       notas: t.Notas || '', cronogramaInicio: fmtDateOnly_(t.CronogramaInicio), cronogramaFin: fmtDateOnly_(t.CronogramaFin),
       sprintId: t.SprintID || null, actualizado: fmtDateTime_(t.Actualizado), expandido: false,
@@ -537,10 +559,10 @@ function addTask(body) {
   return { ok: true, id: id };
 }
 
-// Campos con permisos especiales: solo el Admin puede reasignar el
-// responsable; estado, prioridad y las fechas solo las puede cambiar el
-// responsable de la tarea (o el Admin, si no hay responsable asignado).
-var CAMPO_SOLO_ADMIN = { responsable: true };
+// Campos con permisos especiales: solo el Admin puede reasignar los
+// responsables; estado, prioridad y las fechas solo las puede cambiar
+// alguno de los responsables de la tarea (o el Admin, si no hay ninguno asignado).
+var CAMPO_SOLO_ADMIN = { responsables: true };
 var CAMPO_SOLO_RESPONSABLE_O_ADMIN = { estado: true, prioridad: true, vencimiento: true, cronogramaInicio: true, cronogramaFin: true };
 
 function updateTask(body) {
@@ -555,21 +577,24 @@ function updateTask(body) {
     var usuarios = readTable_(ss, TABS.USUARIOS);
     usuarioActual = usuarios.filter(function (x) { return String(x.Nombre).toLowerCase() === String(body.usuario || '').toLowerCase(); })[0];
     var esAdmin = usuarioActual && usuarioActual.Rol === 'admin';
-    var esResponsable = tarea.Responsable && String(tarea.Responsable).trim().toLowerCase() === String(body.usuario || '').trim().toLowerCase();
+    var esResponsable = esUnoDeLosResponsables_(tarea.Responsable, body.usuario);
     for (var i = 0; i < camposRestringidos.length; i++) {
       var campo = camposRestringidos[i];
       if (CAMPO_SOLO_ADMIN[campo] && !esAdmin) {
         return { ok: false, error: 'Solo el Admin puede reasignar el responsable.' };
       }
       if (CAMPO_SOLO_RESPONSABLE_O_ADMIN[campo] && !esAdmin && !esResponsable) {
-        return { ok: false, error: 'Solo "' + (tarea.Responsable || 'el Admin') + '" puede modificar ese campo de esta tarea.' };
+        return { ok: false, error: 'Solo ' + (leerResponsables_(tarea.Responsable).join(' / ') || 'el Admin') + ' puede modificar ese campo de esta tarea.' };
       }
     }
   }
 
-  var fieldMap = { titulo: 'Titulo', responsable: 'Responsable', estado: 'Estado', vencimiento: 'Vencimiento', prioridad: 'Prioridad', notas: 'Notas', cronogramaInicio: 'CronogramaInicio', cronogramaFin: 'CronogramaFin', sprintId: 'SprintID' };
+  var fieldMap = { titulo: 'Titulo', estado: 'Estado', vencimiento: 'Vencimiento', prioridad: 'Prioridad', notas: 'Notas', cronogramaInicio: 'CronogramaInicio', cronogramaFin: 'CronogramaFin', sprintId: 'SprintID' };
   var row = {};
-  Object.keys(patch).forEach(function (k) { if (fieldMap[k]) row[fieldMap[k]] = patch[k]; });
+  Object.keys(patch).forEach(function (k) {
+    if (k === 'responsables') row.Responsable = JSON.stringify((patch.responsables || []).filter(Boolean));
+    else if (fieldMap[k]) row[fieldMap[k]] = patch[k];
+  });
   row.Actualizado = fmtDateTime_(new Date());
   var okUpd = updateRowById_(ss, TABS.TAREAS, 'ID', body.taskId, row);
 
@@ -578,7 +603,8 @@ function updateTask(body) {
   // saltarse la restricción) de una del propio responsable.
   if (okUpd && camposRestringidos.length && usuarioActual) {
     camposRestringidos.forEach(function (campo) {
-      registrarHistorial_(ss, body.usuario, usuarioActual.Rol, 'Cambiar ' + campo, tarea.Titulo, String(patch[campo] || '(en blanco)'));
+      var detalle = campo === 'responsables' ? (patch.responsables || []).join(', ') : String(patch[campo] || '');
+      registrarHistorial_(ss, body.usuario, usuarioActual.Rol, 'Cambiar ' + campo, tarea.Titulo, detalle || '(en blanco)');
     });
   }
 
@@ -836,9 +862,9 @@ function deleteTask(body) {
   var usuarios = readTable_(ss, TABS.USUARIOS);
   var u = usuarios.filter(function (x) { return String(x.Nombre).toLowerCase() === String(body.usuario || '').toLowerCase(); })[0];
   var esAdmin = u && u.Rol === 'admin';
-  var esResponsable = tarea.Responsable && String(tarea.Responsable).trim().toLowerCase() === String(body.usuario || '').trim().toLowerCase();
+  var esResponsable = esUnoDeLosResponsables_(tarea.Responsable, body.usuario);
   if (!esAdmin && !esResponsable) {
-    return { ok: false, error: 'Solo el Admin o "' + (tarea.Responsable || 'el responsable asignado') + '" pueden eliminar esta tarea.' };
+    return { ok: false, error: 'Solo el Admin o ' + (leerResponsables_(tarea.Responsable).join(' / ') || 'el responsable asignado') + ' pueden eliminar esta tarea.' };
   }
 
   registrarHistorial_(ss, body.usuario, u ? u.Rol : '', 'Eliminar tarea', tarea.Titulo, '');
@@ -907,9 +933,9 @@ function uploadFile(body) {
   var u = usuarios.filter(function (x) { return String(x.Nombre).toLowerCase() === String(body.usuario || '').toLowerCase(); })[0];
   if (!u) return { ok: false, error: 'Usuario no válido.' };
 
-  var esResponsable = tarea.Responsable && String(tarea.Responsable).trim().toLowerCase() === String(body.usuario).trim().toLowerCase();
+  var esResponsable = esUnoDeLosResponsables_(tarea.Responsable, body.usuario);
   if (u.Rol !== 'admin' && !esResponsable) {
-    return { ok: false, error: 'No autorizado: solo "' + (tarea.Responsable || 'el responsable asignado') + '" puede subir archivos a esta tarea.' };
+    return { ok: false, error: 'No autorizado: solo ' + (leerResponsables_(tarea.Responsable).join(' / ') || 'el responsable asignado') + ' puede subir archivos a esta tarea.' };
   }
 
   // El archivo se organiza por módulo (tarea principal) y, dentro de este,

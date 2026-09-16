@@ -114,10 +114,15 @@ select.tag-select{border:none;border-radius:4px;padding:5px 8px;font-weight:700;
 .prio-Media{background:#ffcb47}
 .prio-Alta{background:#ff5ac4}
 input[type=date]{background:var(--bg3);border:1px solid var(--line);color:var(--txt);border-radius:4px;padding:4px 3px;font-size:.72rem}
-.resp-input{background:transparent;border:none;color:var(--txt);width:100%}
-select.resp-input{cursor:pointer;font-weight:600}
-select.resp-input.is-placeholder{color:#9aa4b2;font-weight:400;font-style:italic}
-.resp-input:focus{background:var(--bg3)}
+.resp-cell{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+.resp-chip{background:var(--bg3);border:1px solid var(--line);border-radius:10px;padding:2px 8px;font-size:.72rem;font-weight:600;white-space:nowrap}
+.resp-placeholder{color:#9aa4b2;font-style:italic;font-size:.78rem}
+.resp-edit-btn{flex-shrink:0;background:none;border:1px solid var(--line);border-radius:4px;color:var(--txt-dim);cursor:pointer;font-size:.68rem;padding:1px 4px}
+.resp-edit-btn:hover{color:var(--accent);border-color:var(--accent)}
+.resp-picker-list{max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;margin:10px 0}
+.resp-picker-item{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;cursor:pointer;font-size:.88rem}
+.resp-picker-item:hover{background:var(--bg3)}
+.resp-picker-item input[type=checkbox]{width:16px;height:16px;flex-shrink:0}
 .files-cell{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
 .file-chip{background:var(--bg3);border:1px solid var(--line);border-radius:6px;padding:2px;font-size:.72rem;display:inline-flex;align-items:center;gap:2px;position:relative}
 .file-chip a{text-decoration:none;color:var(--txt);display:inline-flex}
@@ -402,6 +407,16 @@ dialog .err{color:var(--red);font-size:.8rem;min-height:1em;margin-top:8px}
   </div>
 </dialog>
 
+<dialog id="dlgResp">
+  <h3>Responsables de la tarea</h3>
+  <p class="hint">Puedes elegir una o varias personas como responsables de esta tarea.</p>
+  <div id="dlgRespList" class="resp-picker-list"></div>
+  <div class="actions">
+    <button class="btn ghost" data-close>Cancelar</button>
+    <button class="btn" id="dlgRespSave">Guardar</button>
+  </div>
+</dialog>
+
 <dialog id="dlgNotes">
   <h3>Notas / Bitácora de la tarea</h3>
   <p class="hint">Registra correcciones, pendientes o novedades de esta tarea. Cada nota queda con fecha y autor, para llevar el control de lo que se ha hecho.</p>
@@ -613,7 +628,8 @@ function isAdmin(){ return session && session.rol === 'admin'; }
 function canUploadTo(tarea){
   if(!session) return false;
   if(session.rol === 'admin') return true;
-  return (tarea.responsable||'').trim().toLowerCase() === session.usuario.trim().toLowerCase();
+  const lista = tarea.responsables || (tarea.responsable ? [tarea.responsable] : []);
+  return lista.some(r=>(r||'').trim().toLowerCase() === session.usuario.trim().toLowerCase());
 }
 
 // ---------- recursive helpers ----------
@@ -1008,11 +1024,11 @@ function renderTaskRow(t, depth){
     docIconsHtml = (t.enlaces||[]).map(l=>`<a class="doc-link icon-only" href="${escapeHtml(l.url)}" target="_blank" rel="noopener" title="${escapeHtml(l.nombre)}" data-log-doc="${t.id}:${l.id}:${escapeHtml(l.nombre)}">${LINK_ICON_SVG[l.tipo]||LINK_ICON_SVG.enlace}</a>`).join('');
     if(isAdmin()) manageBtnHtml = `<button class="btn ghost small" data-manage-links="${t.id}" title="Agregar o quitar enlaces/documentos">🔗+</button>`;
   }
-  const usuarios = (projectData.usuarios||[]);
-  const respOptions = ['<option value="" '+(t.responsable?'':'selected')+'>Seleccione el responsable</option>']
-    .concat(usuarios.map(u=>`<option ${u.nombre===t.responsable?'selected':''}>${escapeHtml(u.nombre)}</option>`))
-    .concat((t.responsable && !usuarios.some(u=>u.nombre===t.responsable)) ? [`<option selected>${escapeHtml(t.responsable)}</option>`] : [])
-    .join('');
+  const responsables = t.responsables || (t.responsable ? [t.responsable] : []);
+  const respChips = responsables.length
+    ? responsables.map(r=>`<span class="resp-chip">${escapeHtml(r)}</span>`).join('')
+    : `<span class="resp-placeholder">Seleccione el responsable</span>`;
+  const respEditBtn = isAdmin() ? `<button class="resp-edit-btn" data-edit-resp="${t.id}" title="Elegir responsables">✎</button>` : '';
   tr.innerHTML = `
     <td><div class="task-name">${indent}${chev}
       <span class="task-title" contenteditable="true" data-edit-title="${t.id}">${escapeHtml(t.titulo)}</span>
@@ -1020,7 +1036,7 @@ function renderTaskRow(t, depth){
       ${manageBtnHtml}
       ${docIconsHtml ? `<div class="doc-icons-row">${docIconsHtml}</div>` : ''}
     </div></td>
-    <td><select class="resp-input${t.responsable?'':' is-placeholder'}" data-field="responsable" data-id="${t.id}" ${isAdmin()?'':'disabled title="Solo el Admin puede asignar el responsable"'}>${respOptions}</select></td>
+    <td><div class="resp-cell">${respChips}${respEditBtn}</div></td>
     <td><select class="tag-select estado-${t.estado.replace(/ /g,'-')}" data-field="estado" data-id="${t.id}" ${puedeSubir?'':'disabled title="Solo '+escapeHtml(t.responsable||'el Admin')+' puede cambiar el estado"'}>
       ${ESTADOS.map(e=>`<option ${e===t.estado?'selected':''}>${e}</option>`).join('')}</select></td>
     <td>${dateCellHtml(t.vencimiento, 'vencimiento', t.id, puedeSubir)}</td>
@@ -1068,6 +1084,8 @@ document.getElementById('tableBody').addEventListener('click', async (e)=>{
   }
   const notes = e.target.closest('[data-open-notes]');
   if(notes){ openNotesDialog(notes.dataset.openNotes); return; }
+  const editResp = e.target.closest('[data-edit-resp]');
+  if(editResp){ openRespDialog(editResp.dataset.editResp); return; }
   const manageLinks = e.target.closest('[data-manage-links]');
   if(manageLinks){ openLinksDialog(manageLinks.dataset.manageLinks); return; }
   const pickDate = e.target.closest('[data-pick-date]');
@@ -1171,7 +1189,7 @@ document.getElementById('dlgTaskSave').onclick = async ()=>{
   const nombre = document.getElementById('dlgTaskName').value.trim(); if(!nombre) return;
   const r = await apiPost('addTask', { projectId: activeProjectId, titulo: nombre, parentId: taskDialogParentId||'' });
   if(!r.ok){ alert('Error: ' + r.error); return; }
-  const nueva = { id:r.id, titulo:nombre, responsable:'', estado:'No iniciado', vencimiento:'', prioridad:'Media', archivos:[], notas:'', cronogramaInicio:'', cronogramaFin:'', enlaces:[], actualizado:nowStamp(), expandido:false, hijos:[] };
+  const nueva = { id:r.id, titulo:nombre, responsable:'', responsables:[], estado:'No iniciado', vencimiento:'', prioridad:'Media', archivos:[], notas:'', comentarios:[], cronogramaInicio:'', cronogramaFin:'', enlaces:[], actualizado:nowStamp(), expandido:false, hijos:[] };
   if(taskDialogParentId){ const parent=findTarea(projectData.tareas, taskDialogParentId); parent.hijos.push(nueva); parent.expandido=true; }
   else projectData.tareas.push(nueva);
   renderProjectScreen();
@@ -1196,6 +1214,33 @@ function renderNotesList(){
     </div>`).join('');
   list.scrollTop = list.scrollHeight;
 }
+let respTaskId = null;
+function openRespDialog(id){
+  respTaskId = id;
+  const t = findTarea(projectData.tareas, id);
+  const seleccionados = t.responsables || (t.responsable ? [t.responsable] : []);
+  const usuarios = projectData.usuarios || [];
+  document.getElementById('dlgRespList').innerHTML = usuarios.map(u=>`
+    <label class="resp-picker-item">
+      <input type="checkbox" value="${escapeHtml(u.nombre)}" ${seleccionados.includes(u.nombre)?'checked':''}>
+      ${escapeHtml(u.nombre)}
+    </label>`).join('') || '<div class="empty-hint" style="padding:16px">No hay participantes en este proyecto todavía.</div>';
+  document.getElementById('dlgResp').showModal();
+}
+document.getElementById('dlgRespSave').onclick = async ()=>{
+  const t = findTarea(projectData.tareas, respTaskId);
+  const elegidos = Array.from(document.querySelectorAll('#dlgRespList input[type=checkbox]:checked')).map(i=>i.value);
+  const btn = document.getElementById('dlgRespSave');
+  const anterior = { responsables: t.responsables, responsable: t.responsable };
+  btn.disabled = true; const textoOriginal = btn.textContent; btn.textContent = 'Guardando...';
+  t.responsables = elegidos; t.responsable = elegidos.join(', '); t.actualizado = nowStamp();
+  renderTable();
+  let r;
+  try{ r = await apiPost('updateTask', { projectId: activeProjectId, taskId: t.id, usuario: session.usuario, patch: { responsables: elegidos } }); }
+  finally { btn.disabled = false; btn.textContent = textoOriginal; }
+  if(!r.ok){ Object.assign(t, anterior); renderTable(); alert('Error: ' + r.error); return; }
+  document.getElementById('dlgResp').close();
+};
 function openNotesDialog(id){
   notesTaskId=id;
   document.getElementById('dlgNotesText').value = '';
