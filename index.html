@@ -1626,24 +1626,43 @@ function renderAll(){
   else renderProjectScreen();
 }
 
+// window.name SÍ distingue de forma confiable "se actualizó la página" (F5,
+// Ctrl+R, el ícono de recargar) de "se cerró la pestaña/app y se volvió a
+// abrir": el navegador conserva window.name al recargar la MISMA pestaña,
+// pero toda pestaña/ventana nueva empieza con window.name vacío — a
+// diferencia de sessionStorage, que en este proyecto se comporta como si
+// cada refresco fuera una pestaña nueva (por eso el resto del estado se
+// guarda en localStorage). Se lee ANTES de tocar nada más.
+const TAB_MARKER = 'gp_tab_activa';
+const esRecargaDeLaMismaPestana = window.name === TAB_MARKER;
+window.name = TAB_MARKER;
+
+// Limpia todo y deja la pantalla de Proyectos, sin sesión ni proyecto
+// activo — se usa tanto si pasó 1 hora de inactividad como si se detecta
+// que la pestaña/app se cerró y se volvió a abrir.
+async function irAProyectosLimpio(){
+  const guardado = loadAppState();
+  if(guardado && guardado.activeProjectId) clearSession(guardado.activeProjectId);
+  localStorage.removeItem(APP_STATE_KEY);
+  history.replaceState(null, '', location.pathname + location.search);
+  screen = 'home'; session = null; activeProjectId = null;
+  document.getElementById('gateOverlay').style.display = 'none';
+  document.getElementById('homeScreen').style.display = '';
+  document.getElementById('projectScreen').style.display = 'none';
+  await loadHome();
+}
+
 async function restoreOrInit(){
   // Si pasó más de 1 hora sin actividad desde la última vez (aunque la
   // pestaña siga abierta y se haya recargado), se ignora cualquier estado
   // guardado y se exige entrar de nuevo desde Proyectos.
   const idleExpired = getIdleMs() > ONE_HOUR_MS;
   touchActivity();
-  if(idleExpired){
-    const savedIdle = loadAppState();
-    if(savedIdle && savedIdle.activeProjectId) clearSession(savedIdle.activeProjectId);
-    localStorage.removeItem(APP_STATE_KEY);
-    history.replaceState(null, '', location.pathname + location.search);
-    screen = 'home'; session = null; activeProjectId = null;
-    document.getElementById('gateOverlay').style.display = 'none';
-    document.getElementById('homeScreen').style.display = '';
-    document.getElementById('projectScreen').style.display = 'none';
-    await loadHome();
-    return;
-  }
+  if(idleExpired){ await irAProyectosLimpio(); return; }
+
+  // Pestaña/app nueva (se cerró todo y se volvió a abrir, o es una pestaña
+  // recién abierta): siempre Proyectos, sin importar lo que había guardado.
+  if(!esRecargaDeLaMismaPestana){ await irAProyectosLimpio(); return; }
 
   // localStorage manda siempre: si dice explícitamente "screen: home" (por
   // ejemplo porque se usó "← Proyectos"), eso se respeta aunque quede un
