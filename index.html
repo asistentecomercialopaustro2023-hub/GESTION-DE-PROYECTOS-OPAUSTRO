@@ -1092,7 +1092,7 @@ document.getElementById('dlgPartSave').onclick = async ()=>{
 
 // ---------- Tabla principal ----------
 function renderTable(){
-  document.getElementById('btnToggleReorder').style.display = isAdmin() ? 'inline-block' : 'none';
+  document.getElementById('btnToggleReorder').style.display = 'inline-block';
   const tbody = document.getElementById('tableBody');
   tbody.innerHTML = '';
   const search = document.getElementById('searchBox').value.trim().toLowerCase();
@@ -1162,14 +1162,14 @@ function renderTaskRow(t, depth){
     // Solo el ícono (logo por tipo) en la tabla, para no ocupar espacio con
     // nombres largos; el nombre completo queda como tooltip (title).
     docIconsHtml = (t.enlaces||[]).map(l=>`<a class="doc-link icon-only" href="${escapeHtml(l.url)}" target="_blank" rel="noopener" title="${escapeHtml(l.nombre)}" data-log-doc="${t.id}:${l.id}:${escapeHtml(l.nombre)}">${LINK_ICON_SVG[l.tipo]||LINK_ICON_SVG.enlace}</a>`).join('');
-    if(isAdmin()) manageBtnHtml = `<button class="btn ghost small" data-manage-links="${t.id}" title="Agregar o quitar enlaces/documentos">🔗+</button>`;
+    if(canUploadTo(t)) manageBtnHtml = `<button class="btn ghost small" data-manage-links="${t.id}" title="Agregar o quitar enlaces/documentos">🔗+</button>`;
   }
   const responsables = t.responsables || (t.responsable ? [t.responsable] : []);
   const respChips = responsables.length
     ? responsables.map(r=>`<span class="resp-chip">${escapeHtml(r)}</span>`).join('')
     : `<span class="resp-placeholder">Seleccione el responsable</span>`;
   const respEditBtn = isAdmin() ? `<button class="resp-edit-btn" data-edit-resp="${t.id}" title="Elegir responsables">✎</button>` : '';
-  const reorderBtns = (modoReordenar && isAdmin())
+  const reorderBtns = modoReordenar
     ? `<span class="reorder-btns"><button type="button" data-reorder="${t.id}:arriba" title="Mover arriba">↑</button><button type="button" data-reorder="${t.id}:abajo" title="Mover abajo">↓</button></span>`
     : '';
   tr.innerHTML = `

@@ -542,6 +542,18 @@ function requireAdmin_(ss, adminUsuario, adminPassword) {
   return null;
 }
 
+// Autoriza si quien llama es el Admin (con contraseña correcta, igual que
+// requireAdmin_) O si es uno de los responsables de esa tarea/módulo — en
+// ese caso no hace falta contraseña, igual que para subir archivos. Nadie
+// más (otro participante que no sea responsable de esa tarea) puede.
+// Devuelve null si está autorizado, o un mensaje de error si no.
+function requireAdminOResponsable_(ss, taskId, usuario, adminPassword) {
+  var tarea = encontrarTarea_(ss, taskId);
+  if (!tarea) return 'Tarea no encontrada.';
+  if (esUnoDeLosResponsables_(tarea.Responsable, usuario)) return null;
+  return requireAdmin_(ss, usuario, adminPassword);
+}
+
 function login(body) {
   var ss = openControlSheet_(body.projectId);
   var usuarios = readTable_(ss, TABS.USUARIOS);
@@ -762,11 +774,11 @@ function encontrarTarea_(ss, taskId) {
   return tareas.filter(function (t) { return String(t.ID) === String(taskId); })[0];
 }
 
-// Agrega un enlace ya existente (pegado por el admin). Se guarda tal cual,
-// sin mover ni tocar ningún archivo de Drive.
+// Agrega un enlace ya existente (pegado por el Admin o el responsable del
+// módulo). Se guarda tal cual, sin mover ni tocar ningún archivo de Drive.
 function addTaskLink(body) {
   var ss = openControlSheet_(body.projectId);
-  var err = requireAdmin_(ss, body.adminUsuario, body.adminPassword);
+  var err = requireAdminOResponsable_(ss, body.taskId, body.adminUsuario, body.adminPassword);
   if (err) return { ok: false, error: err };
   var row = encontrarTarea_(ss, body.taskId);
   if (!row) return { ok: false, error: 'Tarea no encontrada.' };
@@ -810,11 +822,12 @@ function llenarDocConTareas_(doc, proyectoNombre, moduloTitulo, subtareas) {
 }
 
 // Crea un documento nuevo (Google Docs/Sheets/Slides, equivalentes en línea
-// a Word/Excel/PowerPoint) con el nombre que pida el admin, guardado dentro
-// de la carpeta del proyecto correspondiente, y lo enlaza a la tarea.
+// a Word/Excel/PowerPoint), guardado dentro de la carpeta del proyecto
+// correspondiente, y lo enlaza a la tarea. Solo el Admin o el responsable
+// del módulo pueden hacerlo.
 function createOnlineDoc(body) {
   var ss = openControlSheet_(body.projectId);
-  var err = requireAdmin_(ss, body.adminUsuario, body.adminPassword);
+  var err = requireAdminOResponsable_(ss, body.taskId, body.adminUsuario, body.adminPassword);
   if (err) return { ok: false, error: err };
   var tareasFlat = readTable_(ss, TABS.TAREAS);
   var row = tareasFlat.filter(function (t) { return String(t.ID) === String(body.taskId); })[0];
@@ -861,10 +874,11 @@ function createOnlineDoc(body) {
 }
 
 // Quita un enlace de la lista de la tarea (no borra el archivo de Drive,
-// solo la referencia — así no se elimina por accidente un documento compartido).
+// solo la referencia — así no se elimina por accidente un documento
+// compartido). Solo el Admin o el responsable del módulo pueden hacerlo.
 function deleteTaskLink(body) {
   var ss = openControlSheet_(body.projectId);
-  var err = requireAdmin_(ss, body.adminUsuario, body.adminPassword);
+  var err = requireAdminOResponsable_(ss, body.taskId, body.adminUsuario, body.adminPassword);
   if (err) return { ok: false, error: err };
   var row = encontrarTarea_(ss, body.taskId);
   if (!row) return { ok: false, error: 'Tarea no encontrada.' };
@@ -928,15 +942,12 @@ function getDocAccessLog(p) {
 }
 
 // Mueve una tarea/subtarea una posición hacia arriba o hacia abajo entre
-// sus HERMANOS (mismo ParentID) — solo el Admin puede hacerlo. Se hace
+// sus HERMANOS (mismo ParentID) — cualquiera con acceso al proyecto puede
+// hacerlo (no cambia de módulo ni de responsable, solo el orden). Se hace
 // intercambiando la fila completa con la del hermano adyacente, en vez de
 // reescribir toda la hoja, para que sea rápido y no afecte otras tareas.
 function reordenarTarea(body) {
   var ss = openControlSheet_(body.projectId);
-  var usuarios = readTable_(ss, TABS.USUARIOS);
-  var u = usuarios.filter(function (x) { return String(x.Nombre).toLowerCase() === String(body.usuario || '').toLowerCase(); })[0];
-  if (!u || u.Rol !== 'admin') return { ok: false, error: 'Solo el Admin puede reordenar tareas.' };
-
   var sh = ss.getSheetByName(TABS.TAREAS);
   var lastRow = sh.getLastRow(), lastCol = sh.getLastColumn();
   if (lastRow < 3) return { ok: true };
