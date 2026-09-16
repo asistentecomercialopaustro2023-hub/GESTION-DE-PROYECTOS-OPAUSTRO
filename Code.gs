@@ -77,7 +77,8 @@ function doPost(e) {
       deleteTaskLink: deleteTaskLink,
       logDocAccess: logDocAccess,
       addTaskComment: addTaskComment,
-      deleteTaskComment: deleteTaskComment
+      deleteTaskComment: deleteTaskComment,
+      reordenarTarea: reordenarTarea
     };
     if (!handlers[action]) return jsonResponse({ ok: false, error: 'Acción no reconocida: ' + action });
     var result = handlers[action](body);
@@ -583,7 +584,7 @@ function addTask(body) {
 // Campos con permisos especiales: solo el Admin puede reasignar los
 // responsables; estado, prioridad y las fechas solo las puede cambiar
 // alguno de los responsables de la tarea (o el Admin, si no hay ninguno asignado).
-var CAMPO_SOLO_ADMIN = { responsables: true };
+var CAMPO_SOLO_ADMIN = { responsables: true, parentId: true };
 var CAMPO_SOLO_RESPONSABLE_O_ADMIN = { estado: true, prioridad: true, vencimiento: true, cronogramaInicio: true, cronogramaFin: true };
 
 function updateTask(body) {
@@ -613,14 +614,15 @@ function updateTask(body) {
       for (var i = 0; i < camposRestringidos.length; i++) {
         var campo = camposRestringidos[i];
         if (CAMPO_SOLO_ADMIN[campo] && !esAdmin) {
-          errorPermiso = 'Solo el Admin puede reasignar el responsable.'; return null;
+          errorPermiso = campo === 'parentId' ? 'Solo el Admin puede mover esta tarea a otro módulo.' : 'Solo el Admin puede reasignar el responsable.';
+          return null;
         }
         if (CAMPO_SOLO_RESPONSABLE_O_ADMIN[campo] && !esAdmin && !esResponsable) {
           errorPermiso = 'Solo ' + (leerResponsables_(t.Responsable).join(' / ') || 'el Admin') + ' puede modificar ese campo de esta tarea.'; return null;
         }
       }
     }
-    var fieldMap = { titulo: 'Titulo', estado: 'Estado', vencimiento: 'Vencimiento', prioridad: 'Prioridad', notas: 'Notas', cronogramaInicio: 'CronogramaInicio', cronogramaFin: 'CronogramaFin', sprintId: 'SprintID' };
+    var fieldMap = { titulo: 'Titulo', estado: 'Estado', vencimiento: 'Vencimiento', prioridad: 'Prioridad', notas: 'Notas', cronogramaInicio: 'CronogramaInicio', cronogramaFin: 'CronogramaFin', sprintId: 'SprintID', parentId: 'ParentID' };
     var row = {};
     Object.keys(patch).forEach(function (k) {
       if (k === 'responsables') row.Responsable = JSON.stringify((patch.responsables || []).filter(Boolean));
@@ -778,6 +780,35 @@ function addTaskLink(body) {
   return { ok: true, enlace: nuevo };
 }
 
+// Escribe en un Google Doc recién creado: OPAUSTRO / nombre del proyecto /
+// nombre del módulo, y cada tarea del módulo numerada con espacio en blanco
+// debajo para llenar — el mismo formato de la plantilla usada antes a mano.
+function llenarDocConTareas_(doc, proyectoNombre, moduloTitulo, subtareas) {
+  var body = doc.getBody();
+  var p0 = body.getParagraphs()[0]; // párrafo vacío que ya trae todo doc nuevo
+  p0.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  p0.setText('OPAUSTRO');
+  p0.editAsText().setBold(true).setFontSize(22);
+
+  var p1 = body.appendParagraph((proyectoNombre || '').toUpperCase());
+  p1.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  p1.editAsText().setBold(true).setFontSize(15);
+
+  var p2 = body.appendParagraph('MÓDULO: ' + String(moduloTitulo || '').toUpperCase());
+  p2.setAlignment(DocumentApp.HorizontalAlignment.CENTER);
+  p2.editAsText().setBold(true).setFontSize(13).setForegroundColor('#2E75B6');
+
+  body.appendParagraph('');
+
+  subtareas.forEach(function (titulo, i) {
+    var linea = body.appendParagraph((i + 1) + '. ' + titulo);
+    linea.editAsText().setBold(true).setFontSize(12);
+    body.appendParagraph('');
+    body.appendParagraph('');
+    body.appendParagraph('');
+  });
+}
+
 // Crea un documento nuevo (Google Docs/Sheets/Slides, equivalentes en línea
 // a Word/Excel/PowerPoint) con el nombre que pida el admin, guardado dentro
 // de la carpeta del proyecto correspondiente, y lo enlaza a la tarea.
@@ -792,7 +823,18 @@ function createOnlineDoc(body) {
   if (!titulo) return { ok: false, error: 'El nombre del documento es obligatorio.' };
 
   var file, url;
-  if (body.tipo === 'doc') { var d = DocumentApp.create(titulo); file = DriveApp.getFileById(d.getId()); url = d.getUrl(); }
+  if (body.tipo === 'doc') {
+    var d = DocumentApp.create(titulo);
+    // Opcional: prellenar el documento con el encabezado del proyecto/módulo
+    // y las tareas de este módulo numeradas, con espacio en blanco debajo de
+    // cada una para llenar — para no tener que reescribirlas a mano.
+    if (body.incluirTareas) {
+      var config = readTable_(ss, TABS.CONFIG)[0] || {};
+      var subtareas = tareasFlat.filter(function (t) { return String(t.ParentID) === String(body.taskId); }).map(function (t) { return t.Titulo; });
+      llenarDocConTareas_(d, config.Nombre || '', row.Titulo, subtareas);
+    }
+    file = DriveApp.getFileById(d.getId()); url = d.getUrl();
+  }
   else if (body.tipo === 'sheet') { var s = SpreadsheetApp.create(titulo); file = DriveApp.getFileById(s.getId()); url = s.getUrl(); }
   else if (body.tipo === 'slide') { var p = SlidesApp.create(titulo); file = DriveApp.getFileById(p.getId()); url = p.getUrl(); }
   else return { ok: false, error: 'Tipo de documento no válido.' };
@@ -883,6 +925,41 @@ function getDocAccessLog(p) {
     ok: true,
     accesos: rows.slice(0, 10).map(function (r) { return { fecha: r.Fecha, usuario: r.Usuario, rol: r.Rol }; })
   };
+}
+
+// Mueve una tarea/subtarea una posición hacia arriba o hacia abajo entre
+// sus HERMANOS (mismo ParentID) — solo el Admin puede hacerlo. Se hace
+// intercambiando la fila completa con la del hermano adyacente, en vez de
+// reescribir toda la hoja, para que sea rápido y no afecte otras tareas.
+function reordenarTarea(body) {
+  var ss = openControlSheet_(body.projectId);
+  var usuarios = readTable_(ss, TABS.USUARIOS);
+  var u = usuarios.filter(function (x) { return String(x.Nombre).toLowerCase() === String(body.usuario || '').toLowerCase(); })[0];
+  if (!u || u.Rol !== 'admin') return { ok: false, error: 'Solo el Admin puede reordenar tareas.' };
+
+  var sh = ss.getSheetByName(TABS.TAREAS);
+  var lastRow = sh.getLastRow(), lastCol = sh.getLastColumn();
+  if (lastRow < 3) return { ok: true };
+  var all = sh.getRange(1, 1, lastRow, lastCol).getValues();
+  var headers = all[0];
+  var idCol = headers.indexOf('ID'), parentCol = headers.indexOf('ParentID');
+
+  var idxTarea = -1;
+  for (var i = 1; i < all.length; i++) { if (String(all[i][idCol]) === String(body.taskId)) { idxTarea = i; break; } }
+  if (idxTarea === -1) return { ok: false, error: 'Tarea no encontrada.' };
+
+  var parentId = all[idxTarea][parentCol];
+  var indicesHermanos = [];
+  for (var j = 1; j < all.length; j++) { if (String(all[j][parentCol] || '') === String(parentId || '')) indicesHermanos.push(j); }
+  var pos = indicesHermanos.indexOf(idxTarea);
+  var destino = body.direccion === 'arriba' ? pos - 1 : pos + 1;
+  if (destino < 0 || destino >= indicesHermanos.length) return { ok: true }; // ya está en un extremo, no hay nada que mover
+
+  var otroIdx = indicesHermanos[destino];
+  var filaA = all[idxTarea], filaB = all[otroIdx];
+  sh.getRange(idxTarea + 1, 1, 1, lastCol).setValues([filaB]);
+  sh.getRange(otroIdx + 1, 1, 1, lastCol).setValues([filaA]);
+  return { ok: true };
 }
 
 // Solo el Admin o el responsable de ESA tarea/subtarea pueden eliminarla

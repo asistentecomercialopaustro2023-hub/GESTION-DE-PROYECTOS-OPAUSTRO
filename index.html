@@ -217,6 +217,10 @@ input[type=date]{background:var(--bg3);border:1px solid var(--line);color:var(--
 .resp-placeholder{color:#9aa4b2;font-style:italic;font-size:.78rem}
 .resp-edit-btn{flex-shrink:0;background:none;border:1px solid var(--line);border-radius:4px;color:var(--txt-dim);cursor:pointer;font-size:.68rem;padding:1px 4px}
 .resp-edit-btn:hover{color:var(--accent);border-color:var(--accent)}
+.reorder-btns{display:inline-flex;gap:2px}
+.reorder-btns button{background:var(--bg3);border:1px solid var(--line);border-radius:4px;color:var(--txt-dim);cursor:pointer;font-size:.78rem;width:22px;height:22px;line-height:1}
+.reorder-btns button:hover{color:var(--accent);border-color:var(--accent)}
+#btnToggleReorder.active-toggle{background:var(--accent);color:#fff;border-color:var(--accent)}
 .ult-act-cell{color:var(--txt-dim);font-size:.76rem;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .resp-picker-list{max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;margin:10px 0}
 .resp-picker-item{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;cursor:pointer;font-size:.88rem}
@@ -402,6 +406,7 @@ dialog .err{color:var(--red);font-size:.8rem;min-height:1em;margin-top:8px}
           <option value="">Toda prioridad</option>
           <option>Baja</option><option>Media</option><option>Alta</option>
         </select>
+        <button class="btn ghost small" id="btnToggleReorder" style="display:none" title="Mueve tareas y subtareas de posición dentro de su mismo grupo">↕ Reordenar tareas</button>
       </div>
       <div class="table-scroll">
         <table class="board">
@@ -553,6 +558,21 @@ dialog .err{color:var(--red);font-size:.8rem;min-height:1em;margin-top:8px}
   </div>
 </dialog>
 
+<dialog id="dlgConfirmDoc" style="width:400px">
+  <h3>Crear documento</h3>
+  <p id="dlgConfirmDocMsg" class="hint"></p>
+  <label class="resp-picker-item" style="padding-left:0">
+    <input type="checkbox" id="chkIncluirTareas" checked>
+    ¿Deseas agregar las tareas de este módulo al documento?
+  </label>
+  <p class="hint" style="font-size:.72rem">Se agregan numeradas, con espacio en blanco debajo de cada una para llenar. Si no marcas esto, el documento se crea en blanco.</p>
+  <div class="err" id="dlgConfirmDocErr"></div>
+  <div class="actions">
+    <button class="btn ghost" data-close>Cancelar</button>
+    <button class="btn" id="dlgConfirmDocSave">Crear documento</button>
+  </div>
+</dialog>
+
 <input type="file" id="hiddenFileInput" style="display:none" multiple>
 <input type="file" id="hiddenLogoInput" accept="image/*" style="display:none">
 
@@ -692,6 +712,9 @@ let dragTaskId = null;
 // tanto scroll. En escritorio esto no tiene efecto (se sigue viendo todo
 // en fila). Empiezan todas cerradas; se recuerda cuáles se abrieron.
 let cardsAbiertas = new Set();
+// Modo "Reordenar tareas" (solo Admin): muestra botones ↑/↓ para mover una
+// tarea/subtarea de posición dentro de su mismo grupo de hermanos.
+let modoReordenar = false;
 
 function sessionKey(pid){ return 'sess_' + pid; }
 // localStorage: es lo único que sobrevive de forma confiable a F5/Ctrl+F5/
@@ -1069,6 +1092,7 @@ document.getElementById('dlgPartSave').onclick = async ()=>{
 
 // ---------- Tabla principal ----------
 function renderTable(){
+  document.getElementById('btnToggleReorder').style.display = isAdmin() ? 'inline-block' : 'none';
   const tbody = document.getElementById('tableBody');
   tbody.innerHTML = '';
   const search = document.getElementById('searchBox').value.trim().toLowerCase();
@@ -1122,7 +1146,7 @@ function dateCellHtml(value, campo, taskId, puedeEditar){
 function renderTaskRow(t, depth){
   const tr = document.createElement('tr');
   const cardAbierta = cardsAbiertas.has(t.id);
-  tr.className = 'task-row' + (cardAbierta ? ' card-open' : ''); tr.draggable = true; tr.dataset.id = t.id;
+  tr.className = 'task-row' + (cardAbierta ? ' card-open' : ''); tr.draggable = isAdmin(); tr.dataset.id = t.id;
   tr.ondragstart = ()=>{ dragTaskId = t.id; };
   const chev = t.hijos.length ? `<span class="chev" data-toggle="${t.id}">${t.expandido?'▾':'▸'}</span>` : `<span class="chev leaf">•</span>`;
   // Solo se ve/usa en celular (en escritorio queda oculto por CSS): abre o
@@ -1145,12 +1169,16 @@ function renderTaskRow(t, depth){
     ? responsables.map(r=>`<span class="resp-chip">${escapeHtml(r)}</span>`).join('')
     : `<span class="resp-placeholder">Seleccione el responsable</span>`;
   const respEditBtn = isAdmin() ? `<button class="resp-edit-btn" data-edit-resp="${t.id}" title="Elegir responsables">✎</button>` : '';
+  const reorderBtns = (modoReordenar && isAdmin())
+    ? `<span class="reorder-btns"><button type="button" data-reorder="${t.id}:arriba" title="Mover arriba">↑</button><button type="button" data-reorder="${t.id}:abajo" title="Mover abajo">↓</button></span>`
+    : '';
   tr.innerHTML = `
     <td data-label="Tarea"><div class="task-name">${indent}${chev}
       <span class="task-title" contenteditable="true" data-edit-title="${t.id}">${escapeHtml(t.titulo)}</span>
       <button class="btn ghost small" data-add-sub="${t.id}" title="Agregar subtarea">+</button>
       ${manageBtnHtml}
       ${detailToggle}
+      ${reorderBtns}
       ${docIconsHtml ? `<div class="doc-icons-row">${docIconsHtml}</div>` : ''}
     </div></td>
     <td data-label="Responsable"><div class="resp-cell">${respChips}${respEditBtn}</div></td>
@@ -1179,6 +1207,24 @@ document.getElementById('tableBody').addEventListener('click', async (e)=>{
     const id = toggleDetalle.dataset.toggleDetalle;
     if(cardsAbiertas.has(id)) cardsAbiertas.delete(id); else cardsAbiertas.add(id);
     renderTable();
+    return;
+  }
+  const reorder = e.target.closest('[data-reorder]');
+  if(reorder){
+    const [id, direccion] = reorder.dataset.reorder.split(':');
+    const list = findSiblingList(projectData.tareas, id);
+    if(!list) return;
+    const idx = list.findIndex(x=>x.id===id);
+    const destino = direccion==='arriba' ? idx-1 : idx+1;
+    if(destino<0 || destino>=list.length) return; // ya está en un extremo
+    [list[idx], list[destino]] = [list[destino], list[idx]];
+    renderTable();
+    const r = await apiPost('reordenarTarea', { projectId: activeProjectId, taskId: id, usuario: session.usuario, direccion });
+    if(!r.ok){
+      [list[idx], list[destino]] = [list[destino], list[idx]];
+      renderTable();
+      alert('Error: ' + (r.error||'no se pudo reordenar.'));
+    }
     return;
   }
   const addSub = e.target.closest('[data-add-sub]');
@@ -1268,24 +1314,53 @@ document.getElementById('tableBody').addEventListener('blur', async (e)=>{
     if(nuevo !== t.titulo){ t.titulo = nuevo; t.actualizado = nowStamp(); await apiPost('updateTask', { projectId: activeProjectId, taskId: t.id, usuario: session.usuario, patch: { titulo: nuevo } }); }
   }
 }, true);
-document.getElementById('tableBody').addEventListener('dragover', (e)=>{ if(e.target.closest('tr.task-row')) e.preventDefault(); });
+document.getElementById('tableBody').addEventListener('dragover', (e)=>{ if(isAdmin() && e.target.closest('tr.task-row')) e.preventDefault(); });
 document.getElementById('tableBody').addEventListener('drop', async (e)=>{
+  if(!isAdmin()) return; // mover una tarea a otro módulo es solo del Admin (igual que el backend)
   const row = e.target.closest('tr.task-row');
   if(!row || !dragTaskId || row.dataset.id===dragTaskId) return;
   e.preventDefault();
   const list = projectData.tareas;
   const dragged = findTarea(list, dragTaskId);
-  if(!dragged) return;
-  removeTareaLocal(list, dragTaskId);
   const target = findTarea(list, row.dataset.id);
-  if(target){ target.hijos.push(dragged); target.expandido = true; }
+  if(!dragged || !target) return;
+  // ANTES esto solo se veía mover en pantalla pero nunca se guardaba de
+  // verdad (se mandaba un patch vacío), así que al refrescar la tarea volvía
+  // a su módulo original y parecía "perdida". Ahora sí se guarda el cambio
+  // real de módulo (ParentID), y si el backend lo rechaza se revierte.
+  const parentAnteriorId = dragged.parentId;
+  removeTareaLocal(list, dragTaskId);
+  target.hijos.push(dragged); target.expandido = true;
+  dragged.parentId = target.id;
   renderProjectScreen();
-  await apiPost('updateTask', { projectId: activeProjectId, taskId: dragTaskId, usuario: session.usuario, patch: {} }); // reordenar visualmente; el ParentID real se ajusta en el próximo refresco
+  const r = await apiPost('updateTask', { projectId: activeProjectId, taskId: dragTaskId, usuario: session.usuario, patch: { parentId: target.id } });
+  if(!r.ok){
+    const t = findTarea(projectData.tareas, dragTaskId);
+    removeTareaLocal(projectData.tareas, dragTaskId);
+    t.parentId = parentAnteriorId;
+    const padreAnterior = parentAnteriorId ? findTarea(projectData.tareas, parentAnteriorId) : null;
+    if(padreAnterior) padreAnterior.hijos.push(t); else projectData.tareas.push(t);
+    renderProjectScreen();
+    alert('Error: ' + (r.error||'no se pudo mover la tarea.'));
+  }
 });
 ['searchBox','filterEstado','filterPrioridad'].forEach(id=>{
   document.getElementById(id).addEventListener('input', renderTable);
   document.getElementById(id).addEventListener('change', renderTable);
 });
+document.getElementById('btnToggleReorder').onclick = ()=>{
+  modoReordenar = !modoReordenar;
+  document.getElementById('btnToggleReorder').classList.toggle('active-toggle', modoReordenar);
+  renderTable();
+};
+// Encuentra la lista (raíz del proyecto, o los "hijos" del padre que sea)
+// que contiene DIRECTAMENTE la tarea con este id — para poder moverla un
+// puesto arriba/abajo dentro de ese mismo grupo de hermanos.
+function findSiblingList(list, id){
+  if(list.some(t=>t.id===id)) return list;
+  for(const t of list){ const found = findSiblingList(t.hijos, id); if(found) return found; }
+  return null;
+}
 
 let pendingFileTaskId = null;
 document.getElementById('hiddenFileInput').addEventListener('change', async (e)=>{
@@ -1485,26 +1560,51 @@ document.getElementById('btnAddExistingLink').onclick = async ()=>{
     renderProjectScreen();
   } catch(err){ errEl.textContent = 'Error: no se pudo conectar con el backend.'; }
 };
+// Crea el documento en línea de verdad (llamada al backend + estado local),
+// usado tanto por Excel/PowerPoint (directo) como por Word (tras confirmar
+// en el diálogo si se agregan o no las tareas del módulo).
+async function crearDocumentoEnLinea(tipo, titulo, incluirTareas, btn, errEl){
+  const original = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Creando...';
+  try{
+    const r = await apiPost('createOnlineDoc', { projectId: activeProjectId, taskId: linksTaskId, adminUsuario: session.usuario, adminPassword: session.password, tipo, titulo, incluirTareas: !!incluirTareas });
+    if(!r.ok){ errEl.textContent = 'Error: ' + (r.error || 'no se pudo crear el documento.'); return false; }
+    const t = findTarea(projectData.tareas, linksTaskId);
+    t.enlaces = (t.enlaces||[]).concat([r.enlace]);
+    document.getElementById('dlgNewDocName').value = '';
+    document.getElementById('dlgLinksErr').textContent = '';
+    renderLinksListView();
+    renderProjectScreen();
+    return true;
+  } catch(err){ errEl.textContent = 'Error: no se pudo conectar con el backend.'; return false; }
+  finally { btn.disabled = false; btn.textContent = original; }
+}
 document.querySelectorAll('[data-create-online]').forEach(btn=>{
   btn.onclick = async ()=>{
     const errEl = document.getElementById('dlgLinksErr');
     const titulo = document.getElementById('dlgNewDocName').value.trim();
     if(!titulo){ errEl.textContent = 'Ingresa el nombre del documento.'; return; }
-    btn.disabled = true;
-    const original = btn.textContent; btn.textContent = 'Creando...';
-    try{
-      const r = await apiPost('createOnlineDoc', { projectId: activeProjectId, taskId: linksTaskId, adminUsuario: session.usuario, adminPassword: session.password, tipo: btn.dataset.createOnline, titulo });
-      if(!r.ok){ errEl.textContent = 'Error: ' + (r.error || 'no se pudo crear el documento.'); return; }
-      const t = findTarea(projectData.tareas, linksTaskId);
-      t.enlaces = (t.enlaces||[]).concat([r.enlace]);
-      document.getElementById('dlgNewDocName').value = '';
-      errEl.textContent = '';
-      renderLinksListView();
-      renderProjectScreen();
-    } catch(err){ errEl.textContent = 'Error: no se pudo conectar con el backend.'; }
-    finally { btn.disabled = false; btn.textContent = original; }
+    const tipo = btn.dataset.createOnline;
+    if(tipo==='doc'){
+      // Word sí soporta la plantilla con las tareas del módulo: se confirma
+      // primero con un checklist en vez de crearlo directo.
+      document.getElementById('dlgConfirmDocMsg').textContent = `Vas a crear el documento "${titulo}".`;
+      document.getElementById('chkIncluirTareas').checked = true;
+      document.getElementById('dlgConfirmDocErr').textContent = '';
+      document.getElementById('dlgConfirmDoc').showModal();
+      return;
+    }
+    await crearDocumentoEnLinea(tipo, titulo, false, btn, errEl);
   };
 });
+document.getElementById('dlgConfirmDocSave').onclick = async ()=>{
+  const titulo = document.getElementById('dlgNewDocName').value.trim();
+  const incluirTareas = document.getElementById('chkIncluirTareas').checked;
+  const btn = document.getElementById('dlgConfirmDocSave');
+  const errEl = document.getElementById('dlgConfirmDocErr');
+  const ok = await crearDocumentoEnLinea('doc', titulo, incluirTareas, btn, errEl);
+  if(ok) document.getElementById('dlgConfirmDoc').close();
+};
 
 // ---------- Kanban ----------
 function renderKanban(){
