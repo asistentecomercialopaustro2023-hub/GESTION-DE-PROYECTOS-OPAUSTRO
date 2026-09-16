@@ -103,13 +103,17 @@ table.board th:nth-child(9){width:8%}
     background:var(--bg2);border:1px solid var(--line);border-radius:10px;
     padding:4px 12px 10px;margin-bottom:10px;
   }
-  table.board td{display:block;width:100% !important;padding:7px 0;border-bottom:1px solid var(--line)}
+  table.board td{display:block;width:100% !important;padding:8px 0;border-bottom:1px solid var(--line)}
   table.board tr.task-row td:last-child{border-bottom:none}
+  /* Etiqueta y valor lado a lado (no uno arriba y otro abajo), para
+     aprovechar el ancho disponible en vez de solo apilar hacia abajo. */
+  table.board tr.task-row td[data-label]{display:flex;align-items:center;gap:10px}
+  table.board tr.task-row td[data-label]>*{flex:1;min-width:0}
   table.board td[data-label]::before{
-    content:attr(data-label);display:block;font-size:.64rem;font-weight:700;
-    color:var(--txt-dim);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px;
+    content:attr(data-label);flex:0 0 84px;font-size:.64rem;font-weight:700;
+    color:var(--txt-dim);text-transform:uppercase;letter-spacing:.02em;
   }
-  table.board td[data-label="Tarea"]{border-bottom:2px solid var(--line);padding-bottom:10px;margin-bottom:2px}
+  table.board tr.task-row td[data-label="Tarea"]{display:block;border-bottom:2px solid var(--line);padding-bottom:10px;margin-bottom:2px}
   table.board td[data-label="Tarea"]::before{display:none}
   table.board tr.add-row td, table.board td.empty-hint2{padding:12px 4px}
 }
@@ -141,6 +145,7 @@ input[type=date]{background:var(--bg3);border:1px solid var(--line);color:var(--
 .resp-placeholder{color:#9aa4b2;font-style:italic;font-size:.78rem}
 .resp-edit-btn{flex-shrink:0;background:none;border:1px solid var(--line);border-radius:4px;color:var(--txt-dim);cursor:pointer;font-size:.68rem;padding:1px 4px}
 .resp-edit-btn:hover{color:var(--accent);border-color:var(--accent)}
+.ult-act-cell{color:var(--txt-dim);font-size:.76rem;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .resp-picker-list{max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;margin:10px 0}
 .resp-picker-item{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;cursor:pointer;font-size:.88rem}
 .resp-picker-item:hover{background:var(--bg3)}
@@ -1074,7 +1079,7 @@ function renderTaskRow(t, depth){
       ${dateCellHtml(t.cronogramaInicio, 'cronogramaInicio', t.id, puedeSubir)}
       ${dateCellHtml(t.cronogramaFin, 'cronogramaFin', t.id, puedeSubir)}
     </div></td>
-    <td data-label="Últ. Act." style="color:var(--txt-dim);font-size:.76rem">${escapeHtml(t.actualizado||'').replace(' ','<br>')}<br>${puedeSubir?`<button class="btn ghost small" data-del="${t.id}" style="margin-top:4px;color:var(--red);border-color:var(--red)">Eliminar</button>`:''}</td>
+    <td data-label="Últ. Act."><div class="ult-act-cell">${escapeHtml(t.actualizado||'').replace(' ','<br>')}${puedeSubir?`<button class="btn ghost small" data-del="${t.id}" style="color:var(--red);border-color:var(--red)">Eliminar</button>`:''}</div></td>
   `;
   return tr;
 }
