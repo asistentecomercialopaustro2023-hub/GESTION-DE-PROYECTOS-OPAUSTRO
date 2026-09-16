@@ -91,6 +91,28 @@ table.board th:nth-child(6){width:6%}
 table.board th:nth-child(7){width:6%}
 table.board th:nth-child(8){width:11%}
 table.board th:nth-child(9){width:8%}
+
+/* En pantallas chicas, la tabla de 9 columnas no cabe de forma legible (los
+   encabezados quedaban una letra por línea). Por debajo de este ancho, cada
+   tarea se muestra como una tarjeta con etiqueta + valor, en vez de tabla. */
+@media (max-width: 720px){
+  table.board thead{display:none}
+  table.board{background:transparent;border-collapse:separate;border-spacing:0}
+  table.board, table.board tbody, table.board tr{display:block;width:100%}
+  table.board tr.task-row{
+    background:var(--bg2);border:1px solid var(--line);border-radius:10px;
+    padding:4px 12px 10px;margin-bottom:10px;
+  }
+  table.board td{display:block;width:100% !important;padding:7px 0;border-bottom:1px solid var(--line)}
+  table.board tr.task-row td:last-child{border-bottom:none}
+  table.board td[data-label]::before{
+    content:attr(data-label);display:block;font-size:.64rem;font-weight:700;
+    color:var(--txt-dim);text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px;
+  }
+  table.board td[data-label="Tarea"]{border-bottom:2px solid var(--line);padding-bottom:10px;margin-bottom:2px}
+  table.board td[data-label="Tarea"]::before{display:none}
+  table.board tr.add-row td, table.board td.empty-hint2{padding:12px 4px}
+}
 table.board input,table.board select{max-width:100%}
 .doc-link.icon-only{padding:2px;display:inline-flex;align-items:center;justify-content:center;border-radius:4px}
 tr.group-row td{background:var(--bg3);font-weight:700;padding:8px;cursor:pointer}
@@ -1033,26 +1055,26 @@ function renderTaskRow(t, depth){
     : `<span class="resp-placeholder">Seleccione el responsable</span>`;
   const respEditBtn = isAdmin() ? `<button class="resp-edit-btn" data-edit-resp="${t.id}" title="Elegir responsables">✎</button>` : '';
   tr.innerHTML = `
-    <td><div class="task-name">${indent}${chev}
+    <td data-label="Tarea"><div class="task-name">${indent}${chev}
       <span class="task-title" contenteditable="true" data-edit-title="${t.id}">${escapeHtml(t.titulo)}</span>
       <button class="btn ghost small" data-add-sub="${t.id}" title="Agregar subtarea">+</button>
       ${manageBtnHtml}
       ${docIconsHtml ? `<div class="doc-icons-row">${docIconsHtml}</div>` : ''}
     </div></td>
-    <td><div class="resp-cell">${respChips}${respEditBtn}</div></td>
-    <td><select class="tag-select estado-${t.estado.replace(/ /g,'-')}" data-field="estado" data-id="${t.id}" ${puedeSubir?'':'disabled title="Solo '+escapeHtml(t.responsable||'el Admin')+' puede cambiar el estado"'}>
+    <td data-label="Responsable"><div class="resp-cell">${respChips}${respEditBtn}</div></td>
+    <td data-label="Estado"><select class="tag-select estado-${t.estado.replace(/ /g,'-')}" data-field="estado" data-id="${t.id}" ${puedeSubir?'':'disabled title="Solo '+escapeHtml(t.responsable||'el Admin')+' puede cambiar el estado"'}>
       ${ESTADOS.map(e=>`<option ${e===t.estado?'selected':''}>${e}</option>`).join('')}</select></td>
-    <td>${dateCellHtml(t.vencimiento, 'vencimiento', t.id, puedeSubir)}</td>
-    <td><select class="tag-select prio-${t.prioridad}" data-field="prioridad" data-id="${t.id}" ${puedeSubir?'':'disabled title="Solo '+escapeHtml(t.responsable||'el Admin')+' puede cambiar la prioridad"'}>
+    <td data-label="Vencimiento">${dateCellHtml(t.vencimiento, 'vencimiento', t.id, puedeSubir)}</td>
+    <td data-label="Prioridad"><select class="tag-select prio-${t.prioridad}" data-field="prioridad" data-id="${t.id}" ${puedeSubir?'':'disabled title="Solo '+escapeHtml(t.responsable||'el Admin')+' puede cambiar la prioridad"'}>
       ${PRIORIDADES.map(p=>`<option ${p===t.prioridad?'selected':''}>${p}</option>`).join('')}</select></td>
-    <td><div class="files-cell">${filesHtml}<button class="add-file" data-add-file="${t.id}" ${puedeSubir?'':'disabled'} title="${puedeSubir?'Subir archivo':'Solo '+(t.responsable||'el responsable asignado')+' puede subir aquí'}">+</button></div></td>
-    <td>${(()=>{ const c=t.comentarios||[]; const ult=c[c.length-1]; const preview = ult ? escapeHtml(ult.texto.slice(0,18))+(ult.texto.length>18?'…':'') : '+ Notas';
+    <td data-label="Archivos"><div class="files-cell">${filesHtml}<button class="add-file" data-add-file="${t.id}" ${puedeSubir?'':'disabled'} title="${puedeSubir?'Subir archivo':'Solo '+(t.responsable||'el responsable asignado')+' puede subir aquí'}">+</button></div></td>
+    <td data-label="Notas">${(()=>{ const c=t.comentarios||[]; const ult=c[c.length-1]; const preview = ult ? escapeHtml(ult.texto.slice(0,18))+(ult.texto.length>18?'…':'') : '+ Notas';
       return `<span class="task-title notes-cell" data-open-notes="${t.id}" title="${ult?escapeHtml(ult.texto):'Agregar una nota'}">${c.length?`<span class="notes-count">${c.length}</span> `:''}${preview}</span>`; })()}</td>
-    <td><div class="cronograma-cell">
+    <td data-label="Cronograma"><div class="cronograma-cell">
       ${dateCellHtml(t.cronogramaInicio, 'cronogramaInicio', t.id, puedeSubir)}
       ${dateCellHtml(t.cronogramaFin, 'cronogramaFin', t.id, puedeSubir)}
     </div></td>
-    <td style="color:var(--txt-dim);font-size:.76rem">${escapeHtml(t.actualizado||'').replace(' ','<br>')}<br>${puedeSubir?`<button class="btn ghost small" data-del="${t.id}" style="margin-top:4px;color:var(--red);border-color:var(--red)">Eliminar</button>`:''}</td>
+    <td data-label="Últ. Act." style="color:var(--txt-dim);font-size:.76rem">${escapeHtml(t.actualizado||'').replace(' ','<br>')}<br>${puedeSubir?`<button class="btn ghost small" data-del="${t.id}" style="margin-top:4px;color:var(--red);border-color:var(--red)">Eliminar</button>`:''}</td>
   `;
   return tr;
 }
