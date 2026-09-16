@@ -851,9 +851,12 @@ document.getElementById('gateSubmit').onclick = async ()=>{
 async function enterProject(preserveTab){
   if(!projectData || projectData.proyecto.id !== activeProjectId){
     let r;
+    // Si esto falla, NUNCA hay que dejar en pantalla los datos/sesión de la
+    // visita anterior (se veía como si el nuevo inicio de sesión no hubiera
+    // funcionado) — mejor regresar a Proyectos y que se vea claro que falló.
     try{ r = await apiGet('getProjectData', { projectId: activeProjectId }); }
-    catch(err){ alert('Error: no se pudo conectar con el backend.'); return; }
-    if(!r.ok){ alert('Error: no se pudo cargar el proyecto.'); return; }
+    catch(err){ alert('Error: no se pudo conectar con el backend. Vuelve a intentarlo.'); forceReturnHome(); return; }
+    if(!r.ok){ alert('Error: no se pudo cargar el proyecto.'); forceReturnHome(); return; }
     projectData = r;
   }
   markExpandedDefaults(projectData.tareas);
