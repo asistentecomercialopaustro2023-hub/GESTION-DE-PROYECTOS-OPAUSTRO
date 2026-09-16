@@ -186,13 +186,19 @@ function hashPassword_(pw) {
   return String(pw || '');
 }
 
+// Todas estas funciones leen encabezados + datos en UNA sola llamada a
+// getValues() (en vez de una lectura para encabezados y otra para datos, o
+// peor, una lectura por fila) — cada llamada a Sheets tiene su propio costo
+// fijo en Apps Script, así que juntarlas es lo que hace que agregar,
+// actualizar o eliminar se sienta inmediato en vez de demorado.
+
 // Lee una pestaña como array de objetos usando la fila 1 como encabezados.
 function readTable_(ss, tabName) {
   var sh = ss.getSheetByName(tabName);
   if (!sh || sh.getLastRow() < 2) return [];
-  var values = sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).getValues();
-  var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
-  return values.map(function (row) {
+  var all = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
+  var headers = all[0];
+  return all.slice(1).map(function (row) {
     var obj = {};
     headers.forEach(function (h, i) { obj[h] = row[i]; });
     return obj;
@@ -209,13 +215,14 @@ function appendRow_(ss, tabName, obj) {
 function updateRowById_(ss, tabName, idField, idValue, patch) {
   var sh = ss.getSheetByName(tabName);
   if (!sh || sh.getLastRow() < 2) return false;
-  var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  var lastCol = sh.getLastColumn();
+  var all = sh.getRange(1, 1, sh.getLastRow(), lastCol).getValues();
+  var headers = all[0];
   var idCol = headers.indexOf(idField);
-  var data = sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).getValues();
-  for (var i = 0; i < data.length; i++) {
-    if (String(data[i][idCol]) === String(idValue)) {
-      headers.forEach(function (h, c) { if (patch[h] !== undefined) data[i][c] = patch[h]; });
-      sh.getRange(i + 2, 1, 1, headers.length).setValues([data[i]]);
+  for (var i = 1; i < all.length; i++) {
+    if (String(all[i][idCol]) === String(idValue)) {
+      headers.forEach(function (h, c) { if (patch[h] !== undefined) all[i][c] = patch[h]; });
+      sh.getRange(i + 1, 1, 1, lastCol).setValues([all[i]]);
       return true;
     }
   }
@@ -225,11 +232,14 @@ function updateRowById_(ss, tabName, idField, idValue, patch) {
 function deleteRowsWhere_(ss, tabName, idField, idValues) {
   var sh = ss.getSheetByName(tabName);
   if (!sh || sh.getLastRow() < 2) return;
+  var lastRow = sh.getLastRow();
   var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
   var idCol = headers.indexOf(idField);
-  var lastRow = sh.getLastRow();
+  // Antes esto leía celda por celda dentro del bucle (una llamada a Sheets
+  // por fila); ahora se lee la columna de IDs completa de una sola vez.
+  var idColValues = sh.getRange(2, idCol + 1, lastRow - 1, 1).getValues();
   for (var r = lastRow; r >= 2; r--) {
-    var val = String(sh.getRange(r, idCol + 1).getValue());
+    var val = String(idColValues[r - 2][0]);
     if (idValues.indexOf(val) > -1) sh.deleteRow(r);
   }
 }
@@ -584,46 +594,70 @@ function leerComentarios_(tareaRow) {
   try { return tareaRow.Comentarios ? JSON.parse(tareaRow.Comentarios) : []; }
   catch (e) { return []; }
 }
-// `extra` (opcional) permite guardar otros campos (ej. Actualizado) en la
-// MISMA escritura, en vez de hacer dos lecturas/escrituras completas de la
-// hoja Tareas por separado — eso era lo que hacía lenta cada acción CRUD.
-function guardarComentarios_(ss, taskId, comentarios, extra) {
-  ensureColumn_(ss.getSheetByName(TABS.TAREAS), 'Comentarios');
-  var row = Object.assign({ Comentarios: JSON.stringify(comentarios) }, extra || {});
-  updateRowById_(ss, TABS.TAREAS, 'ID', taskId, row);
+// Lee la fila de una tarea y, en la MISMA pasada, escribe los cambios que
+// devuelva `mutar` (una sola lectura + una sola escritura de la hoja
+// Tareas). Antes, agregar o borrar un comentario leía la tarea por un lado
+// y la volvía a leer completa para escribirla por otro — el doble de
+// llamadas a Sheets de las necesarias, y eso era lo que se sentía lento.
+// `mutar(filaActual)` devuelve el objeto de cambios a aplicar, o null/false
+// para no escribir nada (ej. si no está autorizado).
+function leerYEscribirTarea_(ss, taskId, mutar) {
+  var sh = ss.getSheetByName(TABS.TAREAS);
+  var lastCol = sh.getLastColumn();
+  var all = sh.getRange(1, 1, sh.getLastRow(), lastCol).getValues();
+  var headers = all[0];
+  var idCol = headers.indexOf('ID');
+  for (var i = 1; i < all.length; i++) {
+    if (String(all[i][idCol]) === String(taskId)) {
+      var obj = {};
+      headers.forEach(function (h, c) { obj[h] = all[i][c]; });
+      var patch = mutar(obj);
+      if (patch) {
+        headers.forEach(function (h, c) { if (patch[h] !== undefined) all[i][c] = patch[h]; });
+        sh.getRange(i + 1, 1, 1, lastCol).setValues([all[i]]);
+      }
+      return obj;
+    }
+  }
+  return null;
 }
 
 function addTaskComment(body) {
   var ss = openControlSheet_(body.projectId);
-  var t = encontrarTarea_(ss, body.taskId);
-  if (!t) return { ok: false, error: 'Tarea no encontrada.' };
   var texto = (body.texto || '').trim();
   if (!texto) return { ok: false, error: 'El comentario no puede estar vacío.' };
-  var comentarios = leerComentarios_(t);
-  // Migra la nota de texto simple de la versión anterior (columna Notas) a
-  // la bitácora, la primera vez que se agrega un comentario nuevo, para no perderla.
-  if (!comentarios.length && t.Notas) comentarios.push({ id: Utilities.getUuid(), texto: String(t.Notas), usuario: '', fecha: '' });
+  ensureColumn_(ss.getSheetByName(TABS.TAREAS), 'Comentarios');
   var nuevo = { id: Utilities.getUuid(), texto: texto, usuario: body.usuario || '', fecha: fmtDateTime_(new Date()) };
-  comentarios.push(nuevo);
-  guardarComentarios_(ss, body.taskId, comentarios, { Actualizado: nuevo.fecha });
+  var tarea = leerYEscribirTarea_(ss, body.taskId, function (t) {
+    var comentarios = leerComentarios_(t);
+    // Migra la nota de texto simple de la versión anterior (columna Notas) a
+    // la bitácora, la primera vez que se agrega un comentario nuevo, para no perderla.
+    if (!comentarios.length && t.Notas) comentarios.push({ id: Utilities.getUuid(), texto: String(t.Notas), usuario: '', fecha: '' });
+    comentarios.push(nuevo);
+    return { Comentarios: JSON.stringify(comentarios), Actualizado: nuevo.fecha };
+  });
+  if (!tarea) return { ok: false, error: 'Tarea no encontrada.' };
   return { ok: true, comentario: nuevo };
 }
 
 // Solo el admin o quien escribió el comentario puede borrarlo.
 function deleteTaskComment(body) {
   var ss = openControlSheet_(body.projectId);
-  var t = encontrarTarea_(ss, body.taskId);
-  if (!t) return { ok: false, error: 'Tarea no encontrada.' };
-  var comentarios = leerComentarios_(t);
-  var propio = comentarios.filter(function (c) { return c.id === body.commentId; })[0];
-  if (!propio) return { ok: false, error: 'Comentario no encontrado.' };
-  if (propio.usuario !== body.usuario) {
-    var usuarios = readTable_(ss, TABS.USUARIOS);
-    var u = usuarios.filter(function (x) { return String(x.Nombre).toLowerCase() === String(body.usuario || '').toLowerCase(); })[0];
-    if (!u || u.Rol !== 'admin') return { ok: false, error: 'Solo el autor o el Admin pueden borrar este comentario.' };
-  }
-  comentarios = comentarios.filter(function (c) { return c.id !== body.commentId; });
-  guardarComentarios_(ss, body.taskId, comentarios);
+  var error = null;
+  var tarea = leerYEscribirTarea_(ss, body.taskId, function (t) {
+    var comentarios = leerComentarios_(t);
+    var propio = comentarios.filter(function (c) { return c.id === body.commentId; })[0];
+    if (!propio) { error = 'Comentario no encontrado.'; return null; }
+    if (propio.usuario !== body.usuario) {
+      var usuarios = readTable_(ss, TABS.USUARIOS);
+      var u = usuarios.filter(function (x) { return String(x.Nombre).toLowerCase() === String(body.usuario || '').toLowerCase(); })[0];
+      if (!u || u.Rol !== 'admin') { error = 'Solo el autor o el Admin pueden borrar este comentario.'; return null; }
+    }
+    var restantes = comentarios.filter(function (c) { return c.id !== body.commentId; });
+    return { Comentarios: JSON.stringify(restantes) };
+  });
+  if (!tarea) return { ok: false, error: 'Tarea no encontrada.' };
+  if (error) return { ok: false, error: error };
   return { ok: true };
 }
 
