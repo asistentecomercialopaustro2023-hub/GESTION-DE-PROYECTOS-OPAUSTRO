@@ -264,6 +264,29 @@ function writeSeedTareas_(sh, nodes) {
   return rows.length;
 }
 
+// Para el resumen de "Proyectos" solo hace falta contar tareas y cuántas
+// están "Hecho" — leer la tabla Tareas completa (readTable_) trae también
+// las columnas de Comentarios y EnlacesDocumento, que son JSON y pueden
+// pesar bastante. Esto lee solo las 2 columnas que hacen falta.
+function contarTareas_(ss) {
+  var sh = ss.getSheetByName(TABS.TAREAS);
+  if (!sh || sh.getLastRow() < 2) return { total: 0, hechas: 0 };
+  var lastRow = sh.getLastRow();
+  var headers = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+  var idCol = headers.indexOf('ID') + 1;
+  var estadoCol = headers.indexOf('Estado') + 1;
+  var minCol = Math.min(idCol, estadoCol), maxCol = Math.max(idCol, estadoCol);
+  var data = sh.getRange(2, minCol, lastRow - 1, maxCol - minCol + 1).getValues();
+  var total = 0, hechas = 0;
+  data.forEach(function (row) {
+    var id = row[idCol - minCol];
+    if (id === '' || id === null) return;
+    total++;
+    if (row[estadoCol - minCol] === 'Hecho') hechas++;
+  });
+  return { total: total, hechas: hechas };
+}
+
 // Recolecta un id de tarea y todos sus descendientes (para borrado en cascada).
 function collectDescendants_(tareas, id) {
   var out = [id];
@@ -311,14 +334,12 @@ function listProjects() {
         addToIndex_(entry.id, entry.nombre, ss.getId());
       }
       var config = readTable_(ss, TABS.CONFIG)[0] || {};
-      var tareas = readTable_(ss, TABS.TAREAS);
-      var total = tareas.length;
-      var hechas = tareas.filter(function (t) { return t.Estado === 'Hecho'; }).length;
+      var conteo = contarTareas_(ss);
       var usuarios = readTable_(ss, TABS.USUARIOS).map(function (u) { return { nombre: u.Nombre, rol: u.Rol, email: u.Email || '' }; });
       out.push({
         id: entry.id, nombre: config.Nombre || entry.nombre,
         objetivo: config.Objetivo || '', resultados: config.Resultados || '',
-        creado: config.Creado || '', total: total, hechas: hechas, usuarios: usuarios
+        creado: config.Creado || '', total: conteo.total, hechas: conteo.hechas, usuarios: usuarios
       });
     } catch (err) { /* carpeta eliminada, inaccesible o sin Control válido: se ignora */ }
   });

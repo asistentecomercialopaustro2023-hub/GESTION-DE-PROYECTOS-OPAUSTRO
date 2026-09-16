@@ -133,6 +133,9 @@ table.board th:nth-child(6){width:6%}
 table.board th:nth-child(7){width:6%}
 table.board th:nth-child(8){width:11%}
 table.board th:nth-child(9){width:8%}
+/* Solo tiene efecto/se muestra en la vista de tarjetas de celular (dentro
+   del media query de abajo); en escritorio no hace falta ni se ve. */
+.detail-toggle{display:none}
 
 /* En pantallas chicas, la tabla de 9 columnas no cabe de forma legible (los
    encabezados quedaban una letra por línea). Por debajo de este ancho, cada
@@ -165,10 +168,27 @@ table.board th:nth-child(9){width:8%}
   /* "Últ. Act." también aprovecha el ancho: fecha, hora y Eliminar en una
      sola fila en vez de apilados. */
   .ult-act-cell{flex-wrap:nowrap;white-space:nowrap}
+
+  /* Modo acordeón: cada tarjeta empieza cerrada (solo se ve el título) y al
+     tocar el botón "⌄" se muestran sus campos — así se puede recorrer varias
+     tareas sin tanto scroll, viendo el detalle de una a la vez. Esto es
+     aparte del ícono "▸/▾" que expande/contrae las SUBTAREAS: uno decide
+     qué tarjetas se listan, el otro decide si SE VE el contenido de una tarjeta. */
+  table.board tr.task-row:not(.card-open) td[data-label]:not([data-label="Tarea"]){display:none}
+  table.board tr.task-row.card-open{padding-bottom:6px}
+  .detail-toggle{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:26px;height:26px;flex-shrink:0;margin-left:auto;
+    background:var(--bg3);border:1px solid var(--line);border-radius:50%;
+    color:var(--txt-dim);font-size:.85rem;
+  }
+  .detail-toggle:hover{color:var(--accent);border-color:var(--accent)}
+  /* Títulos de tarea más grandes y legibles, como se ven en escritorio. */
+  table.board td[data-label="Tarea"] .task-title{font-size:1rem;font-weight:600}
 }
 table.board input,table.board select{max-width:100%}
 .doc-link.icon-only{padding:2px;display:inline-flex;align-items:center;justify-content:center;border-radius:4px}
-tr.group-row td{background:var(--bg3);font-weight:700;padding:8px;cursor:pointer}
+tr.group-row td{background:var(--bg3);font-weight:700;padding:8px}
 tr.group-row.completado td{color:var(--green)}
 tr.task-row:hover{background:#1a2350}
 tr.add-row td{color:var(--txt-dim);cursor:pointer;font-style:italic}
@@ -664,6 +684,11 @@ let projectData = null; // { proyecto, usuarios, tareas }
 let session = null; // { usuario, rol, password? }
 let activeTab = 'resumen';
 let dragTaskId = null;
+// En celular cada tarjeta se puede abrir/cerrar (acordeón) para ver sus
+// campos solo cuando hace falta, y así poder navegar varias tareas sin
+// tanto scroll. En escritorio esto no tiene efecto (se sigue viendo todo
+// en fila). Empiezan todas cerradas; se recuerda cuáles se abrieron.
+let cardsAbiertas = new Set();
 
 function sessionKey(pid){ return 'sess_' + pid; }
 // localStorage: es lo único que sobrevive de forma confiable a F5/Ctrl+F5/
@@ -750,7 +775,11 @@ function renderHome(){
   });
 }
 document.getElementById('homeSearch').addEventListener('input', renderHome);
-document.getElementById('btnRefreshHome').onclick = loadHome;
+document.getElementById('btnRefreshHome').onclick = async ()=>{
+  const btn = document.getElementById('btnRefreshHome');
+  btn.disabled = true; const original = btn.textContent; btn.textContent = 'Actualizando...';
+  try{ await loadHome(); } finally { btn.disabled = false; btn.textContent = original; }
+};
 
 document.getElementById('btnChangeLogo').onclick = ()=> document.getElementById('hiddenLogoInput').click();
 document.getElementById('hiddenLogoInput').addEventListener('change', (e)=>{
@@ -1063,7 +1092,7 @@ function renderTable(){
     const rows = hasFilter ? flat.filter(row=>matches(row.t)) : flat;
     const groupTr = document.createElement('tr');
     groupTr.className = 'group-row ' + g.cls;
-    groupTr.innerHTML = `<td colspan="9">▼ ${g.label} <span class="count-pill">${g.roots.length}</span></td>`;
+    groupTr.innerHTML = `<td colspan="9">${g.label} <span class="count-pill">${g.roots.length}</span></td>`;
     tbody.appendChild(groupTr);
     if(rows.length===0){ const tr=document.createElement('tr'); tr.innerHTML=`<td colspan="9" class="empty-hint2">Sin tareas</td>`; tbody.appendChild(tr); }
     rows.forEach(({t, depth})=> tbody.appendChild(renderTaskRow(t, depth)));
@@ -1089,9 +1118,14 @@ function dateCellHtml(value, campo, taskId, puedeEditar){
 }
 function renderTaskRow(t, depth){
   const tr = document.createElement('tr');
-  tr.className = 'task-row'; tr.draggable = true; tr.dataset.id = t.id;
+  const cardAbierta = cardsAbiertas.has(t.id);
+  tr.className = 'task-row' + (cardAbierta ? ' card-open' : ''); tr.draggable = true; tr.dataset.id = t.id;
   tr.ondragstart = ()=>{ dragTaskId = t.id; };
   const chev = t.hijos.length ? `<span class="chev" data-toggle="${t.id}">${t.expandido?'▾':'▸'}</span>` : `<span class="chev leaf">•</span>`;
+  // Solo se ve/usa en celular (en escritorio queda oculto por CSS): abre o
+  // cierra los campos de ESTA tarjeta (Responsable, Estado, fechas, etc.),
+  // sin afectar si sus subtareas se muestran o no (eso lo maneja "chev").
+  const detailToggle = `<button type="button" class="detail-toggle" data-toggle-detalle="${t.id}" title="${cardAbierta?'Ocultar detalles':'Ver detalles'}">${cardAbierta?'⌃':'⌄'}</button>`;
   const indent = `<span class="depth-indent" style="width:${depth*22}px"></span>`;
   const filesHtml = (t.archivos||[]).map((f)=>`<span class="file-chip" title="${escapeHtml(f.nombre)}"><a href="${f.url}" target="_blank" rel="noopener">${fileIconFor(f.nombre)}</a>${(isAdmin()||f.subidoPor===session.usuario)?`<button data-file-del="${t.id}:${f.id}" title="Eliminar ${escapeHtml(f.nombre)}">✕</button>`:''}</span>`).join('');
   const puedeSubir = canUploadTo(t);
@@ -1113,6 +1147,7 @@ function renderTaskRow(t, depth){
       <span class="task-title" contenteditable="true" data-edit-title="${t.id}">${escapeHtml(t.titulo)}</span>
       <button class="btn ghost small" data-add-sub="${t.id}" title="Agregar subtarea">+</button>
       ${manageBtnHtml}
+      ${detailToggle}
       ${docIconsHtml ? `<div class="doc-icons-row">${docIconsHtml}</div>` : ''}
     </div></td>
     <td data-label="Responsable"><div class="resp-cell">${respChips}${respEditBtn}</div></td>
@@ -1136,6 +1171,13 @@ function renderTaskRow(t, depth){
 document.getElementById('tableBody').addEventListener('click', async (e)=>{
   const toggle = e.target.closest('[data-toggle]');
   if(toggle){ findTarea(projectData.tareas, toggle.dataset.toggle).expandido ^= true; renderProjectScreen(); return; }
+  const toggleDetalle = e.target.closest('[data-toggle-detalle]');
+  if(toggleDetalle){
+    const id = toggleDetalle.dataset.toggleDetalle;
+    if(cardsAbiertas.has(id)) cardsAbiertas.delete(id); else cardsAbiertas.add(id);
+    renderTable();
+    return;
+  }
   const addSub = e.target.closest('[data-add-sub]');
   if(addSub){ openTaskDialog(addSub.dataset.addSub); return; }
   const del = e.target.closest('[data-del]');
