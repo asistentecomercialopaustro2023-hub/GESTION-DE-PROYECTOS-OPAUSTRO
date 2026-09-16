@@ -33,7 +33,8 @@ var TABS = {
   TAREAS: 'Tareas',
   SPRINTS: 'Sprints',
   ARCHIVOS: 'Archivos',
-  ACCESOS: 'Accesos'
+  ACCESOS: 'Accesos',
+  HISTORIAL: 'Historial'
 };
 
 // ============================================================
@@ -361,6 +362,9 @@ function createProject(body) {
   var shAccesos = ss.insertSheet(TABS.ACCESOS);
   shAccesos.getRange(1, 1, 1, 6).setValues([['Fecha', 'TareaID', 'LinkId', 'Documento', 'Usuario', 'Rol']]);
 
+  var shHistorial = ss.insertSheet(TABS.HISTORIAL);
+  shHistorial.getRange(1, 1, 1, 6).setValues([['Fecha', 'Usuario', 'Rol', 'Accion', 'Tarea', 'Detalle']]);
+
   // fila admin
   appendRow_(ss, TABS.USUARIOS, { Nombre: adminNombre, Rol: 'admin', PasswordHash: hashPassword_(adminPassword), Email: adminEmail });
 
@@ -523,14 +527,51 @@ function addTask(body) {
   return { ok: true, id: id };
 }
 
+// Campos con permisos especiales: solo el Admin puede reasignar el
+// responsable; estado, prioridad y las fechas solo las puede cambiar el
+// responsable de la tarea (o el Admin, si no hay responsable asignado).
+var CAMPO_SOLO_ADMIN = { responsable: true };
+var CAMPO_SOLO_RESPONSABLE_O_ADMIN = { estado: true, prioridad: true, vencimiento: true, cronogramaInicio: true, cronogramaFin: true };
+
 function updateTask(body) {
   var ss = openControlSheet_(body.projectId);
   var patch = body.patch || {};
+  var camposRestringidos = Object.keys(patch).filter(function (k) { return CAMPO_SOLO_ADMIN[k] || CAMPO_SOLO_RESPONSABLE_O_ADMIN[k]; });
+
+  var tarea = null, usuarioActual = null;
+  if (camposRestringidos.length) {
+    tarea = encontrarTarea_(ss, body.taskId);
+    if (!tarea) return { ok: false, error: 'Tarea no encontrada.' };
+    var usuarios = readTable_(ss, TABS.USUARIOS);
+    usuarioActual = usuarios.filter(function (x) { return String(x.Nombre).toLowerCase() === String(body.usuario || '').toLowerCase(); })[0];
+    var esAdmin = usuarioActual && usuarioActual.Rol === 'admin';
+    var esResponsable = tarea.Responsable && String(tarea.Responsable).trim().toLowerCase() === String(body.usuario || '').trim().toLowerCase();
+    for (var i = 0; i < camposRestringidos.length; i++) {
+      var campo = camposRestringidos[i];
+      if (CAMPO_SOLO_ADMIN[campo] && !esAdmin) {
+        return { ok: false, error: 'Solo el Admin puede reasignar el responsable.' };
+      }
+      if (CAMPO_SOLO_RESPONSABLE_O_ADMIN[campo] && !esAdmin && !esResponsable) {
+        return { ok: false, error: 'Solo "' + (tarea.Responsable || 'el Admin') + '" puede modificar ese campo de esta tarea.' };
+      }
+    }
+  }
+
   var fieldMap = { titulo: 'Titulo', responsable: 'Responsable', estado: 'Estado', vencimiento: 'Vencimiento', prioridad: 'Prioridad', notas: 'Notas', cronogramaInicio: 'CronogramaInicio', cronogramaFin: 'CronogramaFin', sprintId: 'SprintID' };
   var row = {};
   Object.keys(patch).forEach(function (k) { if (fieldMap[k]) row[fieldMap[k]] = patch[k]; });
   row.Actualizado = fmtDateTime_(new Date());
   var okUpd = updateRowById_(ss, TABS.TAREAS, 'ID', body.taskId, row);
+
+  // Deja constancia de quién hizo el cambio en campos con permisos
+  // especiales, para poder distinguir una acción del Admin (que puede
+  // saltarse la restricción) de una del propio responsable.
+  if (okUpd && camposRestringidos.length && usuarioActual) {
+    camposRestringidos.forEach(function (campo) {
+      registrarHistorial_(ss, body.usuario, usuarioActual.Rol, 'Cambiar ' + campo, tarea.Titulo, String(patch[campo] || '(en blanco)'));
+    });
+  }
+
   return { ok: okUpd };
 }
 
@@ -543,9 +584,13 @@ function leerComentarios_(tareaRow) {
   try { return tareaRow.Comentarios ? JSON.parse(tareaRow.Comentarios) : []; }
   catch (e) { return []; }
 }
-function guardarComentarios_(ss, taskId, comentarios) {
+// `extra` (opcional) permite guardar otros campos (ej. Actualizado) en la
+// MISMA escritura, en vez de hacer dos lecturas/escrituras completas de la
+// hoja Tareas por separado — eso era lo que hacía lenta cada acción CRUD.
+function guardarComentarios_(ss, taskId, comentarios, extra) {
   ensureColumn_(ss.getSheetByName(TABS.TAREAS), 'Comentarios');
-  updateRowById_(ss, TABS.TAREAS, 'ID', taskId, { Comentarios: JSON.stringify(comentarios) });
+  var row = Object.assign({ Comentarios: JSON.stringify(comentarios) }, extra || {});
+  updateRowById_(ss, TABS.TAREAS, 'ID', taskId, row);
 }
 
 function addTaskComment(body) {
@@ -560,8 +605,7 @@ function addTaskComment(body) {
   if (!comentarios.length && t.Notas) comentarios.push({ id: Utilities.getUuid(), texto: String(t.Notas), usuario: '', fecha: '' });
   var nuevo = { id: Utilities.getUuid(), texto: texto, usuario: body.usuario || '', fecha: fmtDateTime_(new Date()) };
   comentarios.push(nuevo);
-  guardarComentarios_(ss, body.taskId, comentarios);
-  updateRowById_(ss, TABS.TAREAS, 'ID', body.taskId, { Actualizado: fmtDateTime_(new Date()) });
+  guardarComentarios_(ss, body.taskId, comentarios, { Actualizado: nuevo.fecha });
   return { ok: true, comentario: nuevo };
 }
 
@@ -709,6 +753,26 @@ function ensureAccesosSheet_(ss) {
   return sh;
 }
 
+// ============================================================
+// HISTORIAL / AUDITORÍA DE CAMBIOS RESTRINGIDOS
+// El Admin puede hacer cualquier cambio aunque no sea el responsable de la
+// tarea; este registro deja constancia de quién hizo cada cambio sensible
+// (eliminar tarea, cambiar estado/prioridad/fechas o reasignar responsable),
+// para poder distinguir una acción del Admin de una del propio responsable.
+// ============================================================
+function ensureHistorialSheet_(ss) {
+  var sh = ss.getSheetByName(TABS.HISTORIAL);
+  if (!sh) {
+    sh = ss.insertSheet(TABS.HISTORIAL);
+    sh.getRange(1, 1, 1, 6).setValues([['Fecha', 'Usuario', 'Rol', 'Accion', 'Tarea', 'Detalle']]);
+  }
+  return sh;
+}
+function registrarHistorial_(ss, usuario, rol, accion, tareaTitulo, detalle) {
+  var sh = ensureHistorialSheet_(ss);
+  sh.appendRow([ahoraEcuadorStamp_(), usuario || '', rol || '', accion || '', tareaTitulo || '', detalle || '']);
+}
+
 function logDocAccess(body) {
   var ss = openControlSheet_(body.projectId);
   var sh = ensureAccesosSheet_(ss);
@@ -727,9 +791,23 @@ function getDocAccessLog(p) {
   };
 }
 
+// Solo el Admin o el responsable de ESA tarea/subtarea pueden eliminarla
+// (si no tiene responsable asignado, solo el Admin).
 function deleteTask(body) {
   var ss = openControlSheet_(body.projectId);
   var tareas = readTable_(ss, TABS.TAREAS);
+  var tarea = tareas.filter(function (t) { return String(t.ID) === String(body.taskId); })[0];
+  if (!tarea) return { ok: false, error: 'Tarea no encontrada.' };
+
+  var usuarios = readTable_(ss, TABS.USUARIOS);
+  var u = usuarios.filter(function (x) { return String(x.Nombre).toLowerCase() === String(body.usuario || '').toLowerCase(); })[0];
+  var esAdmin = u && u.Rol === 'admin';
+  var esResponsable = tarea.Responsable && String(tarea.Responsable).trim().toLowerCase() === String(body.usuario || '').trim().toLowerCase();
+  if (!esAdmin && !esResponsable) {
+    return { ok: false, error: 'Solo el Admin o "' + (tarea.Responsable || 'el responsable asignado') + '" pueden eliminar esta tarea.' };
+  }
+
+  registrarHistorial_(ss, body.usuario, u ? u.Rol : '', 'Eliminar tarea', tarea.Titulo, '');
   var ids = collectDescendants_(tareas, body.taskId);
   deleteRowsWhere_(ss, TABS.TAREAS, 'ID', ids);
   deleteRowsWhere_(ss, TABS.ARCHIVOS, 'TareaID', ids);

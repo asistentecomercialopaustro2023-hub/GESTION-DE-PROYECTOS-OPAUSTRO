@@ -985,11 +985,11 @@ function renderTable(){
 // input (que ocupa espacio dentro del propio recuadro) y se agrega uno
 // propio, más chico, seguido del botón "x" para dejarla en blanco — así el
 // conjunto completo queda más corto en vez del input nativo + calendario + x.
-function dateCellHtml(value, campo, taskId){
+function dateCellHtml(value, campo, taskId, puedeEditar){
   return `<div class="date-cell">
-    <input type="date" value="${value}" data-field="${campo}" data-id="${taskId}">
-    <button type="button" class="date-pick" data-pick-date="${campo}:${taskId}" title="Elegir fecha">📅</button>
-    ${value?`<button class="date-clear" data-clear-date="${campo}:${taskId}" title="Dejar en blanco (sin fecha)">✕</button>`:''}
+    <input type="date" value="${value}" data-field="${campo}" data-id="${taskId}" ${puedeEditar?'':'disabled'}>
+    ${puedeEditar?`<button type="button" class="date-pick" data-pick-date="${campo}:${taskId}" title="Elegir fecha">📅</button>`:''}
+    ${value&&puedeEditar?`<button class="date-clear" data-clear-date="${campo}:${taskId}" title="Dejar en blanco (sin fecha)">✕</button>`:''}
   </div>`;
 }
 function renderTaskRow(t, depth){
@@ -1021,19 +1021,19 @@ function renderTaskRow(t, depth){
       ${docIconsHtml ? `<div class="doc-icons-row">${docIconsHtml}</div>` : ''}
     </div></td>
     <td><select class="resp-input${t.responsable?'':' is-placeholder'}" data-field="responsable" data-id="${t.id}" ${isAdmin()?'':'disabled title="Solo el Admin puede asignar el responsable"'}>${respOptions}</select></td>
-    <td><select class="tag-select estado-${t.estado.replace(/ /g,'-')}" data-field="estado" data-id="${t.id}">
+    <td><select class="tag-select estado-${t.estado.replace(/ /g,'-')}" data-field="estado" data-id="${t.id}" ${puedeSubir?'':'disabled title="Solo '+escapeHtml(t.responsable||'el Admin')+' puede cambiar el estado"'}>
       ${ESTADOS.map(e=>`<option ${e===t.estado?'selected':''}>${e}</option>`).join('')}</select></td>
-    <td>${dateCellHtml(t.vencimiento, 'vencimiento', t.id)}</td>
-    <td><select class="tag-select prio-${t.prioridad}" data-field="prioridad" data-id="${t.id}">
+    <td>${dateCellHtml(t.vencimiento, 'vencimiento', t.id, puedeSubir)}</td>
+    <td><select class="tag-select prio-${t.prioridad}" data-field="prioridad" data-id="${t.id}" ${puedeSubir?'':'disabled title="Solo '+escapeHtml(t.responsable||'el Admin')+' puede cambiar la prioridad"'}>
       ${PRIORIDADES.map(p=>`<option ${p===t.prioridad?'selected':''}>${p}</option>`).join('')}</select></td>
     <td><div class="files-cell">${filesHtml}<button class="add-file" data-add-file="${t.id}" ${puedeSubir?'':'disabled'} title="${puedeSubir?'Subir archivo':'Solo '+(t.responsable||'el responsable asignado')+' puede subir aquí'}">+</button></div></td>
     <td>${(()=>{ const c=t.comentarios||[]; const ult=c[c.length-1]; const preview = ult ? escapeHtml(ult.texto.slice(0,18))+(ult.texto.length>18?'…':'') : '+ Notas';
       return `<span class="task-title notes-cell" data-open-notes="${t.id}" title="${ult?escapeHtml(ult.texto):'Agregar una nota'}">${c.length?`<span class="notes-count">${c.length}</span> `:''}${preview}</span>`; })()}</td>
     <td><div class="cronograma-cell">
-      ${dateCellHtml(t.cronogramaInicio, 'cronogramaInicio', t.id)}
-      ${dateCellHtml(t.cronogramaFin, 'cronogramaFin', t.id)}
+      ${dateCellHtml(t.cronogramaInicio, 'cronogramaInicio', t.id, puedeSubir)}
+      ${dateCellHtml(t.cronogramaFin, 'cronogramaFin', t.id, puedeSubir)}
     </div></td>
-    <td style="color:var(--txt-dim);font-size:.76rem">${escapeHtml(t.actualizado||'').replace(' ','<br>')}<br><button class="btn ghost small" data-del="${t.id}" style="margin-top:4px;color:var(--red);border-color:var(--red)">Eliminar</button></td>
+    <td style="color:var(--txt-dim);font-size:.76rem">${escapeHtml(t.actualizado||'').replace(' ','<br>')}<br>${puedeSubir?`<button class="btn ghost small" data-del="${t.id}" style="margin-top:4px;color:var(--red);border-color:var(--red)">Eliminar</button>`:''}</td>
   `;
   return tr;
 }
@@ -1046,7 +1046,8 @@ document.getElementById('tableBody').addEventListener('click', async (e)=>{
   const del = e.target.closest('[data-del]');
   if(del){
     if(confirm('¿Eliminar esta tarea y sus subtareas?')){
-      await apiPost('deleteTask', { projectId: activeProjectId, taskId: del.dataset.del });
+      const r = await apiPost('deleteTask', { projectId: activeProjectId, taskId: del.dataset.del, usuario: session.usuario });
+      if(!r.ok){ alert('Error: ' + (r.error||'no se pudo eliminar.')); return; }
       removeTareaLocal(projectData.tareas, del.dataset.del);
       renderProjectScreen();
     }
@@ -1079,6 +1080,7 @@ document.getElementById('tableBody').addEventListener('click', async (e)=>{
   if(clearDate){
     const [campo, tid] = clearDate.dataset.clearDate.split(':');
     const t = findTarea(projectData.tareas, tid);
+    const anterior = { [campo]: t[campo], vencimiento: t.vencimiento };
     t[campo] = ''; t.actualizado = nowStamp();
     // Vencimiento va a la par de la fecha final del cronograma: si esta se
     // borra, vencimiento también queda en blanco.
@@ -1086,7 +1088,8 @@ document.getElementById('tableBody').addEventListener('click', async (e)=>{
     renderTable();
     const patch = { [campo]: '' };
     if(campo==='cronogramaFin') patch.vencimiento = '';
-    await apiPost('updateTask', { projectId: activeProjectId, taskId: t.id, patch });
+    const r = await apiPost('updateTask', { projectId: activeProjectId, taskId: t.id, usuario: session.usuario, patch });
+    if(!r.ok){ Object.assign(t, anterior); renderTable(); alert('Error: ' + (r.error||'no se pudo actualizar.')); }
     return;
   }
 });
@@ -1094,15 +1097,25 @@ document.getElementById('tableBody').addEventListener('change', async (e)=>{
   const f = e.target.closest('[data-field]');
   if(f){
     const t = findTarea(projectData.tareas, f.dataset.id);
+    const anterior = f.dataset.field, anteriorValor = t[f.dataset.field], anteriorVenc = t.vencimiento;
     t[f.dataset.field] = f.value; t.actualizado = nowStamp();
     // Vencimiento va siempre a la par de la fecha final del cronograma: si
     // esta cambia (o se deja en blanco), vencimiento se actualiza igual.
-    if(f.dataset.field==='cronogramaFin' && f.value!==t.vencimiento){
-      t.vencimiento = f.value;
-      apiPost('updateTask', { projectId: activeProjectId, taskId: t.id, patch: { vencimiento: f.value } }).catch(()=>{});
-    }
+    const sincronizaVenc = f.dataset.field==='cronogramaFin' && f.value!==t.vencimiento;
+    if(sincronizaVenc) t.vencimiento = f.value;
     renderTable();
-    await apiPost('updateTask', { projectId: activeProjectId, taskId: t.id, patch: { [f.dataset.field]: f.value } });
+    const r = await apiPost('updateTask', { projectId: activeProjectId, taskId: t.id, usuario: session.usuario, patch: { [f.dataset.field]: f.value } });
+    if(!r.ok){
+      t[anterior] = anteriorValor;
+      if(sincronizaVenc) t.vencimiento = anteriorVenc;
+      renderTable();
+      alert('Error: ' + (r.error||'no se pudo actualizar.'));
+      return;
+    }
+    if(sincronizaVenc){
+      const r2 = await apiPost('updateTask', { projectId: activeProjectId, taskId: t.id, usuario: session.usuario, patch: { vencimiento: f.value } });
+      if(!r2.ok){ t.vencimiento = anteriorVenc; renderTable(); alert('Error: ' + (r2.error||'no se pudo sincronizar el vencimiento.')); }
+    }
   }
 });
 document.getElementById('tableBody').addEventListener('blur', async (e)=>{
@@ -1110,7 +1123,7 @@ document.getElementById('tableBody').addEventListener('blur', async (e)=>{
   if(title){
     const t = findTarea(projectData.tareas, title.dataset.editTitle);
     const nuevo = title.textContent.trim()||t.titulo;
-    if(nuevo !== t.titulo){ t.titulo = nuevo; t.actualizado = nowStamp(); await apiPost('updateTask', { projectId: activeProjectId, taskId: t.id, patch: { titulo: nuevo } }); }
+    if(nuevo !== t.titulo){ t.titulo = nuevo; t.actualizado = nowStamp(); await apiPost('updateTask', { projectId: activeProjectId, taskId: t.id, usuario: session.usuario, patch: { titulo: nuevo } }); }
   }
 }, true);
 document.getElementById('tableBody').addEventListener('dragover', (e)=>{ if(e.target.closest('tr.task-row')) e.preventDefault(); });
@@ -1125,7 +1138,7 @@ document.getElementById('tableBody').addEventListener('drop', async (e)=>{
   const target = findTarea(list, row.dataset.id);
   if(target){ target.hijos.push(dragged); target.expandido = true; }
   renderProjectScreen();
-  await apiPost('updateTask', { projectId: activeProjectId, taskId: dragTaskId, patch: {} }); // reordenar visualmente; el ParentID real se ajusta en el próximo refresco
+  await apiPost('updateTask', { projectId: activeProjectId, taskId: dragTaskId, usuario: session.usuario, patch: {} }); // reordenar visualmente; el ParentID real se ajusta en el próximo refresco
 });
 ['searchBox','filterEstado','filterPrioridad'].forEach(id=>{
   document.getElementById(id).addEventListener('input', renderTable);
@@ -1189,16 +1202,29 @@ function openNotesDialog(id){
   renderNotesList();
   document.getElementById('dlgNotes').showModal();
 }
+// Bloquea el diálogo completo (escribir, agregar, borrar, cerrar) mientras
+// hay una operación en curso — las notas son CRUD y deben sentirse
+// inmediatas, así que mientras se agrega o elimina no se permite ninguna
+// otra acción hasta que el backend confirme.
+function setNotesDialogBusy(busy, textoBoton){
+  const dlg = document.getElementById('dlgNotes');
+  dlg.querySelectorAll('textarea, button').forEach(el=> el.disabled = busy);
+  if(textoBoton) document.getElementById('dlgNotesSave').textContent = textoBoton;
+  else document.getElementById('dlgNotesSave').textContent = 'Agregar';
+}
 document.getElementById('dlgNotesList').addEventListener('click', async (e)=>{
   const del = e.target.closest('[data-del-note]');
   if(!del) return;
   if(!confirm('¿Eliminar esta nota?')) return;
   const t = findTarea(projectData.tareas, notesTaskId);
-  const r = await apiPost('deleteTaskComment', { projectId: activeProjectId, taskId: t.id, commentId: del.dataset.delNote, usuario: session.usuario });
-  if(!r.ok){ alert('Error: ' + r.error); return; }
-  t.comentarios = (t.comentarios||[]).filter(c=>c.id!==del.dataset.delNote);
-  renderNotesList();
-  renderTable();
+  setNotesDialogBusy(true, 'Eliminando...');
+  try{
+    const r = await apiPost('deleteTaskComment', { projectId: activeProjectId, taskId: t.id, commentId: del.dataset.delNote, usuario: session.usuario });
+    if(!r.ok){ alert('Error: ' + r.error); return; }
+    t.comentarios = (t.comentarios||[]).filter(c=>c.id!==del.dataset.delNote);
+    renderNotesList();
+    renderTable();
+  } finally { setNotesDialogBusy(false); }
 });
 document.getElementById('dlgNotesText').addEventListener('keydown', (e)=>{
   if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); document.getElementById('dlgNotesSave').click(); }
@@ -1207,7 +1233,10 @@ document.getElementById('dlgNotesSave').onclick = async ()=>{
   const texto = document.getElementById('dlgNotesText').value.trim();
   if(!texto) return;
   const t = findTarea(projectData.tareas, notesTaskId);
-  const r = await apiPost('addTaskComment', { projectId: activeProjectId, taskId: t.id, texto, usuario: session.usuario });
+  setNotesDialogBusy(true, 'Agregando...');
+  let r;
+  try{ r = await apiPost('addTaskComment', { projectId: activeProjectId, taskId: t.id, texto, usuario: session.usuario }); }
+  finally { setNotesDialogBusy(false); }
   if(!r.ok){ alert('Error: ' + r.error); return; }
   // El backend migra la nota antigua de texto simple (si había) a la bitácora
   // en este mismo momento; localmente basta con agregar el comentario nuevo.
@@ -1328,7 +1357,13 @@ function renderKanban(){
     col.ondragleave = ()=> col.classList.remove('dragover');
     col.ondrop = async (e)=>{ e.preventDefault(); col.classList.remove('dragover');
       const t = findTarea(projectData.tareas, dragTaskId);
-      if(t){ t.estado=estado; t.actualizado=nowStamp(); renderProjectScreen(); await apiPost('updateTask',{projectId:activeProjectId, taskId:t.id, patch:{estado}}); } };
+      if(!t) return;
+      if(!canUploadTo(t)){ alert('Solo "'+(t.responsable||'el Admin')+'" puede cambiar el estado de esta tarea.'); return; }
+      const anterior = t.estado;
+      t.estado=estado; t.actualizado=nowStamp(); renderProjectScreen();
+      const r = await apiPost('updateTask',{projectId:activeProjectId, taskId:t.id, usuario:session.usuario, patch:{estado}});
+      if(!r.ok){ t.estado = anterior; renderProjectScreen(); alert('Error: ' + (r.error||'no se pudo actualizar.')); }
+    };
     cols.appendChild(col);
   });
 }
