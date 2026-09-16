@@ -570,45 +570,58 @@ function updateTask(body) {
   var patch = body.patch || {};
   var camposRestringidos = Object.keys(patch).filter(function (k) { return CAMPO_SOLO_ADMIN[k] || CAMPO_SOLO_RESPONSABLE_O_ADMIN[k]; });
 
-  var tarea = null, usuarioActual = null;
+  // El rol real del que llama solo se puede confirmar leyendo Usuarios (no
+  // hay que confiar en lo que diga el propio cliente) — se lee una sola vez,
+  // antes de la lectura/escritura de la tarea, solo si hace falta.
+  var usuarioActual = null;
   if (camposRestringidos.length) {
-    tarea = encontrarTarea_(ss, body.taskId);
-    if (!tarea) return { ok: false, error: 'Tarea no encontrada.' };
     var usuarios = readTable_(ss, TABS.USUARIOS);
     usuarioActual = usuarios.filter(function (x) { return String(x.Nombre).toLowerCase() === String(body.usuario || '').toLowerCase(); })[0];
-    var esAdmin = usuarioActual && usuarioActual.Rol === 'admin';
-    var esResponsable = esUnoDeLosResponsables_(tarea.Responsable, body.usuario);
-    for (var i = 0; i < camposRestringidos.length; i++) {
-      var campo = camposRestringidos[i];
-      if (CAMPO_SOLO_ADMIN[campo] && !esAdmin) {
-        return { ok: false, error: 'Solo el Admin puede reasignar el responsable.' };
-      }
-      if (CAMPO_SOLO_RESPONSABLE_O_ADMIN[campo] && !esAdmin && !esResponsable) {
-        return { ok: false, error: 'Solo ' + (leerResponsables_(tarea.Responsable).join(' / ') || 'el Admin') + ' puede modificar ese campo de esta tarea.' };
-      }
-    }
   }
 
-  var fieldMap = { titulo: 'Titulo', estado: 'Estado', vencimiento: 'Vencimiento', prioridad: 'Prioridad', notas: 'Notas', cronogramaInicio: 'CronogramaInicio', cronogramaFin: 'CronogramaFin', sprintId: 'SprintID' };
-  var row = {};
-  Object.keys(patch).forEach(function (k) {
-    if (k === 'responsables') row.Responsable = JSON.stringify((patch.responsables || []).filter(Boolean));
-    else if (fieldMap[k]) row[fieldMap[k]] = patch[k];
+  var errorPermiso = null;
+  var tituloTarea = null;
+  // Una sola lectura + una sola escritura de la hoja Tareas (antes: leerla
+  // completa para revisar permisos, y volver a leerla completa para
+  // guardar) — esto es lo que hacía lenta cada acción CRUD restringida.
+  var tarea = leerYEscribirTarea_(ss, body.taskId, function (t) {
+    tituloTarea = t.Titulo;
+    if (camposRestringidos.length) {
+      var esAdmin = usuarioActual && usuarioActual.Rol === 'admin';
+      var esResponsable = esUnoDeLosResponsables_(t.Responsable, body.usuario);
+      for (var i = 0; i < camposRestringidos.length; i++) {
+        var campo = camposRestringidos[i];
+        if (CAMPO_SOLO_ADMIN[campo] && !esAdmin) {
+          errorPermiso = 'Solo el Admin puede reasignar el responsable.'; return null;
+        }
+        if (CAMPO_SOLO_RESPONSABLE_O_ADMIN[campo] && !esAdmin && !esResponsable) {
+          errorPermiso = 'Solo ' + (leerResponsables_(t.Responsable).join(' / ') || 'el Admin') + ' puede modificar ese campo de esta tarea.'; return null;
+        }
+      }
+    }
+    var fieldMap = { titulo: 'Titulo', estado: 'Estado', vencimiento: 'Vencimiento', prioridad: 'Prioridad', notas: 'Notas', cronogramaInicio: 'CronogramaInicio', cronogramaFin: 'CronogramaFin', sprintId: 'SprintID' };
+    var row = {};
+    Object.keys(patch).forEach(function (k) {
+      if (k === 'responsables') row.Responsable = JSON.stringify((patch.responsables || []).filter(Boolean));
+      else if (fieldMap[k]) row[fieldMap[k]] = patch[k];
+    });
+    row.Actualizado = fmtDateTime_(new Date());
+    return row;
   });
-  row.Actualizado = fmtDateTime_(new Date());
-  var okUpd = updateRowById_(ss, TABS.TAREAS, 'ID', body.taskId, row);
+  if (!tarea) return { ok: false, error: 'Tarea no encontrada.' };
+  if (errorPermiso) return { ok: false, error: errorPermiso };
 
   // Deja constancia de quién hizo el cambio en campos con permisos
   // especiales, para poder distinguir una acción del Admin (que puede
   // saltarse la restricción) de una del propio responsable.
-  if (okUpd && camposRestringidos.length && usuarioActual) {
+  if (camposRestringidos.length && usuarioActual) {
     camposRestringidos.forEach(function (campo) {
       var detalle = campo === 'responsables' ? (patch.responsables || []).join(', ') : String(patch[campo] || '');
-      registrarHistorial_(ss, body.usuario, usuarioActual.Rol, 'Cambiar ' + campo, tarea.Titulo, detalle || '(en blanco)');
+      registrarHistorial_(ss, body.usuario, usuarioActual.Rol, 'Cambiar ' + campo, tituloTarea, detalle || '(en blanco)');
     });
   }
 
-  return { ok: okUpd };
+  return { ok: true };
 }
 
 // ============================================================
