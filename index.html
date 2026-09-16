@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>Gestión de Proyectos</title>
+<!-- Permite "Agregar a pantalla de inicio" en Android/iOS: se abre como app
+     (sin la barra del navegador), con su propio ícono y nombre. Sigue
+     siendo la misma web, no requiere App Store/Play Store. -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1a2040">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Proyectos">
 <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 <style>
 :root{
@@ -116,6 +126,13 @@ table.board th:nth-child(9){width:8%}
   table.board tr.task-row td[data-label="Tarea"]{display:block;border-bottom:2px solid var(--line);padding-bottom:10px;margin-bottom:2px}
   table.board td[data-label="Tarea"]::before{display:none}
   table.board tr.add-row td, table.board td.empty-hint2{padding:12px 4px}
+  /* En un celular real (a diferencia del navegador de escritorio usado para
+     probar) el input de fecha nativo necesita más ancho para no cortar la
+     fecha — aquí sobra espacio horizontal, así que se ensancha. */
+  .date-cell input[type=date]{width:128px}
+  /* "Últ. Act." también aprovecha el ancho: fecha, hora y Eliminar en una
+     sola fila en vez de apilados. */
+  .ult-act-cell{flex-wrap:nowrap;white-space:nowrap}
 }
 table.board input,table.board select{max-width:100%}
 .doc-link.icon-only{padding:2px;display:inline-flex;align-items:center;justify-content:center;border-radius:4px}
@@ -1079,7 +1096,7 @@ function renderTaskRow(t, depth){
       ${dateCellHtml(t.cronogramaInicio, 'cronogramaInicio', t.id, puedeSubir)}
       ${dateCellHtml(t.cronogramaFin, 'cronogramaFin', t.id, puedeSubir)}
     </div></td>
-    <td data-label="Últ. Act."><div class="ult-act-cell">${escapeHtml(t.actualizado||'').replace(' ','<br>')}${puedeSubir?`<button class="btn ghost small" data-del="${t.id}" style="color:var(--red);border-color:var(--red)">Eliminar</button>`:''}</div></td>
+    <td data-label="Últ. Act."><div class="ult-act-cell"><span class="ult-act-fecha">${escapeHtml(t.actualizado||'')}</span>${puedeSubir?`<button class="btn ghost small" data-del="${t.id}" style="color:var(--red);border-color:var(--red)">Eliminar</button>`:''}</div></td>
   `;
   return tr;
 }
